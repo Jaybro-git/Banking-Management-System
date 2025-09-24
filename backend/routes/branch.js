@@ -75,4 +75,28 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get branch by employee_id
+router.get('/by-employee/:employee_id', async (req, res) => {
+  const { employee_id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT b.branch_id, b.branch_name
+       FROM branch b
+       JOIN employee e ON e.branch_id = b.branch_id
+       WHERE e.employee_id = $1`,
+      [employee_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Branch not found for this employee' });
+    }
+
+    res.json({ branch: result.rows[0] });
+  } catch (err) {
+    console.error('Error fetching branch by employee:', err);
+    res.status(500).json({ error: 'Database error', details: err.message });
+  }
+});
+
 module.exports = router;

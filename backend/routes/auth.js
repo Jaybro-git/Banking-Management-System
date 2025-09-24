@@ -8,6 +8,22 @@ const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
 const SALT_ROUNDS = 10;
 
+// 🔹 Middleware to authenticate JWT from cookie
+function authenticateToken(req, res, next) {
+  const token = req.cookies.accessToken;
+  if (!token) {
+    return res.status(401).json({ error: 'Access token not provided' });
+  }
+
+  jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user; // attach decoded token to request
+    next();
+  });
+}
+
 // Login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -88,10 +104,8 @@ router.post('/refresh', async (req, res) => {
   }
 
   try {
-    // Verify refresh token
     const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
     
-    // Check if refresh token exists in database
     const userRes = await pool.query(
       'SELECT * FROM user_account WHERE username = $1 AND refresh_token = $2', 
       [payload.username, refreshToken]
@@ -101,14 +115,12 @@ router.post('/refresh', async (req, res) => {
       return res.status(403).json({ error: 'Invalid refresh token' });
     }
 
-    // Generate new access token
     const accessToken = jwt.sign(
       { username: payload.username, employee_id: payload.employee_id }, 
       ACCESS_TOKEN_SECRET, 
       { expiresIn: '15m' }
     );
 
-    // Set new access token cookie
     res
       .cookie('accessToken', accessToken, {
         httpOnly: true,
@@ -147,11 +159,16 @@ router.get('/verify', (req, res) => {
   }
 });
 
+// 🔹 New: Get logged-in user info
+router.get('/me', authenticateToken, (req, res) => {
+  const { username, employee_id } = req.user;
+  res.json({ username, employee_id });
+});
+
 // Logout
 router.post('/logout', async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
   
-  // Clear refresh token from database if it exists
   if (refreshToken) {
     try {
       const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
@@ -164,7 +181,6 @@ router.post('/logout', async (req, res) => {
     }
   }
 
-  // Clear cookies
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'strict',
