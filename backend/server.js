@@ -9,10 +9,12 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Routes
+const adminCheckRoutes = require('./routes/admin-check');
 const branchRoutes = require('./routes/branch');
 const employeeRoutes = require('./routes/employee');
 const authRoutes = require('./routes/auth');
 
+app.use('/api/admin-check', adminCheckRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/auth', authRoutes);

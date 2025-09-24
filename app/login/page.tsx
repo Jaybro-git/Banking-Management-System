@@ -98,7 +98,7 @@ export default function OfficerLoginPage() {
             </div>
 
             {errorMsg && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+              <div>
                 <p className="text-red-600 text-sm text-center">{errorMsg}</p>
               </div>
             )}
@@ -117,13 +117,13 @@ export default function OfficerLoginPage() {
           <div className="mt-6 space-y-2">
             <p className="text-center text-sm text-gray-600">
               Register Employee?{' '}
-              <a href="/register/admin-check" className="text-green-600 hover:underline">
+              <a href="/register" className="text-green-600 hover:underline">
                 Register
               </a>
             </p>
             <p className="text-center text-sm text-gray-600">
               Register a branch?{' '}
-              <a href="/register-branch/admin-check" className="text-green-600 hover:underline">
+              <a href="/register-branch" className="text-green-600 hover:underline">
                 Register branch
               </a>
             </p>
