@@ -12,7 +12,7 @@ export default function AdminCheckPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPassword(e.target.value);
-    if (error) setError(null); // Clear error when user starts typing
+    if (error) setError(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {

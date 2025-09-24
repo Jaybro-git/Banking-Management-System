@@ -1,4 +1,5 @@
 import React from 'react';
+
 interface ButtonProps {
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger' | 'filter';
@@ -7,7 +8,7 @@ interface ButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   active?: boolean;
-  type?: 'button' | 'submit' | 'reset'; // <-- add this
+  type?: 'button' | 'submit' | 'reset';
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -21,7 +22,7 @@ export const Button: React.FC<ButtonProps> = ({
   type = 'button',
 }) => {
   const baseClasses =
-    'font-medium rounded-lg transition-colors duration-200 border flex items-center justify-center space-x-2';
+    'font-medium rounded-lg transition-all duration-200 border flex items-center justify-center space-x-2 transform';
 
   const sizeClasses = {
     sm: 'px-3 py-1 text-xs',
@@ -30,19 +31,24 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const variantClasses = {
-    primary: 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700',
-    secondary: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50',
-    danger: 'text-red-600 hover:bg-red-100 border-transparent',
+    primary:
+      'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95',
+    secondary:
+      'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-200 active:scale-95',
+    danger:
+      'text-red-600 hover:bg-red-100 border-transparent active:bg-red-200 active:scale-95',
     filter: active
       ? 'bg-emerald-600 text-white border-emerald-600'
-      : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50 hover:text-emerald-600',
+      : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50 hover:text-emerald-600 active:bg-gray-100 active:scale-95',
   };
 
-  const disabledClasses = disabled ? 'opacity-50 cursor-not-allowed' : '';
+  const disabledClasses = disabled
+    ? 'opacity-50 cursor-not-allowed'
+    : 'cursor-pointer';
 
   return (
     <button
-      type={type} // <-- use it here
+      type={type}
       className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${disabledClasses} ${className}`}
       onClick={onClick}
       disabled={disabled}

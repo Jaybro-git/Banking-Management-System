@@ -1,71 +1,119 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 import { Button } from '@/app/components/ui/Button';
 import { TextInput } from '@/app/components/ui/TextInput';
 
+interface Branch {
+  branch_id: string;
+  branch_name: string;
+}
+
 export default function OfficerSignupPage() {
   const [form, setForm] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
-    password: '',
-    role: 'agent',
+    nic: '',
+    phone: '',
     branch: '',
-    employeeId: '',
-    phone: ''
+    role: 'AGENT', // 🔹 enum-safe value
+    username: '',
+    password: ''
   });
-  const [showPassword, setShowPassword] = useState(false);
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+
+  // Fetch branches from backend
+  useEffect(() => {
+    async function fetchBranches() {
+      try {
+        const res = await fetch('http://localhost:5000/api/branches');
+        const data = await res.json();
+        setBranches(data.branches || []);
+      } catch (err) {
+        console.error('Failed to fetch branches', err);
+      }
+    }
+    fetchBranches();
+  }, []);
+
+  // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    // Map role dropdown to enum values
+    if (name === 'role') {
+      setForm({ ...form, role: value.toUpperCase() });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Submit registration
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert(
-      `Signing up as ${form.role} at branch ${form.branch} with email: ${form.email}`
-    );
+    try {
+      const res = await fetch('http://localhost:5000/api/employees/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`Employee registered!\nID: ${data.employee.employee_id}`);
+        setForm({
+          firstName: '',
+          lastName: '',
+          email: '',
+          nic: '',
+          phone: '',
+          branch: '',
+          role: 'AGENT',
+          username: '',
+          password: ''
+        });
+      } else {
+        alert(`Error: ${data.error}`);
+        console.error('Details:', data.details);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to connect to server');
+    }
   };
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-white">
       <div className="flex flex-col md:flex-row w-full max-w-6xl shadow-2xl rounded-3xl overflow-hidden">
-        {/* Left Section */}
+        {/* Left panel */}
         <div className="bg-green-50 flex-1 p-10 flex items-center justify-center">
           <div className="max-w-md text-center">
             <h2 className="text-4xl font-bold text-emerald-700 mb-4">
-              Welcome to<br /> 
-              Registration Portal
+              Employee Registration Portal
             </h2>
             <p className="text-gray-700 text-lg mb-6">
-              Register new employee accounts to manage branch operations, oversee transactions, and provide trusted banking services to customers.
+              Register new employee accounts to manage branch operations, oversee transactions, and provide trusted banking services.
             </p>
           </div>
         </div>
 
-        {/* Right Section */}
+        {/* Right panel */}
         <div className="bg-white flex-1 p-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">Register</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Register Employee</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <TextInput
-              label="Full Name"
-              name="name"
-              value={form.name}
-              onChange={handleChange}
-              required
-            />
-
-            <TextInput
-              label="Email"
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-            />
+            <TextInput label="First Name" name="firstName" value={form.firstName} onChange={handleChange} required />
+            <TextInput label="Last Name" name="lastName" value={form.lastName} onChange={handleChange} required />
+            <TextInput label="NIC Number" name="nic" value={form.nic} onChange={handleChange} required />
+            <TextInput label="Email" type="email" name="email" value={form.email} onChange={handleChange} required />
+            <TextInput label="Phone Number" type="tel" name="phone" value={form.phone} onChange={handleChange} required />
 
             <div className="flex gap-4">
+              {/* Role */}
               <div className="flex-1">
                 <label className="block mb-1 text-gray-700">Role</label>
                 <select
@@ -74,50 +122,41 @@ export default function OfficerSignupPage() {
                   onChange={handleChange}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="agent">Agent</option>
-                  <option value="manager">Manager</option>
+                  <option value="AGENT">Agent</option>
+                  <option value="MANAGER">Manager</option>
                 </select>
               </div>
 
-              <div className="flex-2">
+              {/* Branch */}
+              <div className="flex-1">
                 <label className="block mb-1 text-gray-700">Branch</label>
                 <select
                   name="branch"
                   value={form.branch}
                   onChange={handleChange}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
                 >
                   <option value="">Select Branch</option>
-                  <option value="colombo">Colombo</option>
-                  <option value="galle">Galle</option>
-                  <option value="kandy">Kandy</option>
-                  <option value="anuradhapura">Anuradhapura</option>
-                  <option value="matara">Matara</option>
-                  <option value="moratuwa">Moratuwa</option>
-                  <option value="peradeniya">Peradeniya</option>
-                  <option value="polonnaruwa">Polonnaruwa</option>
-                  <option value="ampara">Ampara</option>
+                  {branches.map(branch => (
+                    <option key={branch.branch_id} value={branch.branch_id}>
+                      {branch.branch_name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
+            {/* Username */}
             <TextInput
-              label="Employee ID"
-              name="employeeId"
-              value={form.employeeId}
+              label="Username"
+              name="username"
+              value={form.username}
               onChange={handleChange}
               required
             />
 
-            <TextInput
-              label="Phone Number"
-              type="tel"
-              name="phone"
-              value={form.phone}
-              onChange={handleChange}
-              required
-            />
-
+            {/* Password */}
             <div>
               <label className="block mb-1 text-gray-700">Password</label>
               <div className="relative">
@@ -127,31 +166,31 @@ export default function OfficerSignupPage() {
                   value={form.password}
                   onChange={handleChange}
                   required
-                  placeholder=""
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-3 flex items-center text-gray-500"
+                  className="absolute inset-y-0 right-3 flex items-center text-gray-500 cursor-pointer"
                   tabIndex={-1}
                 >
                   {showPassword ? <AiOutlineEyeInvisible size={22} /> : <AiOutlineEye size={22} />}
                 </button>
               </div>
-            </div>            
+            </div>
 
-            <Button type="submit" className="w-full mt-6">
+            {/* Submit */}
+            <Button type="submit" className="w-full mt-6 cursor-pointer">
               Register
             </Button>
-          </form>
 
-          <p className="mt-6 text-center text-sm text-gray-600">
-            Already registered?{' '}
-            <a href="/login" className="text-green-600 hover:underline">
-              Log in
-            </a>
-          </p>
+            <p className="mt-6 text-center text-sm text-gray-600">
+              Go back to{' '}
+              <a href="/login" className="text-green-600 hover:underline">
+                Log in
+              </a>
+            </p>
+          </form>
         </div>
       </div>
     </main>
