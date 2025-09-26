@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import {
   Chart as ChartJS,
@@ -9,45 +10,44 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler
 } from "chart.js";
-import { 
-  PiggyBank, 
-  BarChart2, 
+import {
+  PiggyBank,
+  BarChart2,
   Headset,
   Banknote,
   UserPlus,
   Vault,
   Receipt,
   Users,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { Sidebar } from '@/app/components/Sidebar'
-import { Header } from '@/app/components/Header';
-import { OverviewTab } from '@/app/components/OverviewTab';
-import { TransactionsTab } from '@/app/components/TransactionsTab';
-import { CustomersTab } from '@/app/components/CustomersTab';
-import { ActionItem } from '@/app/components/QuickActionCard';
+import { Sidebar } from "@/app/components/Sidebar";
+import { Header } from "@/app/components/Header";
+import { OverviewTab } from "@/app/components/OverviewTab";
+import { TransactionsTab } from "@/app/components/TransactionsTab";
+import { CustomersTab } from "@/app/components/CustomersTab";
+import { ActionItem } from "@/app/components/QuickActionCard";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 export default function AgentDashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  // Transaction data
-  const transactions = [
-    { date: "2025-08-01", account: "SA-004-017-00023", type: "Deposit", amount: 5000, ref: "TXN9324", customer: "John Doe" },
-    { date: "2025-08-02", account: "SA-004-005-00008", type: "Withdrawal", amount: 2000, ref: "TXN9325", customer: "Jane Smith" },
-    { date: "2025-08-03", account: "SA-004-017-00056", type: "Deposit", amount: 3500, ref: "TXN9326", customer: "Alice Brown" },
-    { date: "2025-08-04", account: "SA-004-002-00028", type: "Withdrawal", amount: 1500, ref: "TXN9327", customer: "Bob Wilson" },
-  ];
-
-  // Transaction filters and search
   const [filterType, setFilterType] = useState<"All" | "Deposit" | "Withdrawal">("All");
   const [searchField, setSearchField] = useState<"customer" | "account" | "ref" | "date">("customer");
-  
-  // Customer filters and search
+
   type CustomerFilterType =
     | "All"
     | "Savings Accounts"
@@ -63,7 +63,13 @@ export default function AgentDashboard() {
   const [customerSearchField, setCustomerSearchField] = useState<CustomerSearchField>("account");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
-  // Chart data
+  const transactions = [
+    { date: "2025-08-01", account: "SA-004-017-00023", type: "Deposit", amount: 5000, ref: "TXN9324", customer: "John Doe" },
+    { date: "2025-08-02", account: "SA-004-005-00008", type: "Withdrawal", amount: 2000, ref: "TXN9325", customer: "Jane Smith" },
+    { date: "2025-08-03", account: "SA-004-017-00056", type: "Deposit", amount: 3500, ref: "TXN9326", customer: "Alice Brown" },
+    { date: "2025-08-04", account: "SA-004-002-00028", type: "Withdrawal", amount: 1500, ref: "TXN9327", customer: "Bob Wilson" },
+  ];
+
   const chartData = {
     labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"],
     datasets: [
@@ -86,56 +92,15 @@ export default function AgentDashboard() {
     ],
   };
 
-  // Quick actions data
   const quickActions: ActionItem[] = [
-    {
-      icon: <UserPlus className="w-7 h-7 text-green-600" />,
-      title: 'Open Account',
-      description: "Open New Savings, Children, Teen, Joint, Fixed Deposit Accounts",
-      href: '/OpenAccount',
-    },
-    {
-      icon: <PiggyBank className="w-7 h-7 text-green-600" />,
-      title: 'New Deposit',
-      description: 'Create a New Customer Deposit Request',
-      href: '/NewDeposit',
-    },
-    {
-      icon: <Banknote className="w-7 h-7 text-green-600" />,
-      title: 'Withdrawal',
-      description: 'Process a Customer Withdrawal Request',
-      href: '/Withdrawal', 
-    },
-    {
-      icon: <Vault className="w-7 h-7 text-green-600" />,
-      title: 'Fixed Deposit',
-      description: 'Manage Fixed Deposits and Interest Payments',
-      href: '/FixedDeposit', 
-    },
-    {
-      icon: <Users className="w-7 h-7 text-green-600" />,
-      title: 'Account Holders',
-      description: 'View and Manage Account Holders',
-      href: '/Accounts',
-    },
-    {
-      icon: <Receipt className="w-7 h-7 text-green-600" />,
-      title: 'Transactions History',
-      description: 'View Transaction History for Accounts',
-      href: '/Transactions',
-    },
-    {
-      icon: <BarChart2 className="w-7 h-7 text-green-600" />,
-      title: 'View Reports',
-      description: 'Generate and View Detailed Reports on Transactions and Accounts',
-      href: '/Reports',
-    },
-    {
-      icon: <Headset className="w-7 h-7 text-green-600" />,
-      title: 'Customer Support',
-      description: 'Assist Customers With Their Queries and Issues',
-      href: '/test',
-    },
+    { icon: <UserPlus className="w-7 h-7 text-green-600" />, title: "Open Account", description: "Open New Savings, Children, Teen, Joint, Fixed Deposit Accounts", href: "/OpenAccount" },
+    { icon: <PiggyBank className="w-7 h-7 text-green-600" />, title: "New Deposit", description: "Create a New Customer Deposit Request", href: "/NewDeposit" },
+    { icon: <Banknote className="w-7 h-7 text-green-600" />, title: "Withdrawal", description: "Process a Customer Withdrawal Request", href: "/Withdrawal" },
+    { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
+    { icon: <Users className="w-7 h-7 text-green-600" />, title: "Account Holders", description: "View and Manage Account Holders", href: "/Accounts" },
+    { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Transactions History", description: "View Transaction History for Accounts", href: "/Transactions" },
+    { icon: <BarChart2 className="w-7 h-7 text-green-600" />, title: "View Reports", description: "Generate and View Detailed Reports on Transactions and Accounts", href: "/Reports" },
+    { icon: <Headset className="w-7 h-7 text-green-600" />, title: "Customer Support", description: "Assist Customers With Their Queries and Issues", href: "/test" },
   ];
 
   return (
@@ -146,22 +111,13 @@ export default function AgentDashboard() {
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
       />
-
-      <main 
+      <main
         className={`flex-1 p-6 bg-white shadow-inner transition-all duration-300 min-w-0 ${
           isSidebarOpen ? "ml-64" : "ml-16"
         }`}
       >
         <Header activeTab={activeTab} />
-
-        {/* Tab Content */}
-        {activeTab === "overview" && (
-          <OverviewTab 
-            quickActions={quickActions} 
-            chartData={chartData} 
-          />
-        )}
-
+        {activeTab === "overview" && <OverviewTab quickActions={quickActions} chartData={chartData} />}
         {activeTab === "transactions" && (
           <TransactionsTab
             transactions={transactions}
@@ -173,7 +129,6 @@ export default function AgentDashboard() {
             setSearchQuery={setSearchQuery}
           />
         )}
-
         {activeTab === "customers" && (
           <CustomersTab
             transactions={transactions}
