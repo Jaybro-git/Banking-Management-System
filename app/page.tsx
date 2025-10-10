@@ -93,7 +93,7 @@ export default function AgentDashboard() {
   };
 
   const quickActions: ActionItem[] = [
-    { icon: <UserPlus className="w-7 h-7 text-green-600" />, title: "Open Account", description: "Open New Savings, Children, Teen, Joint, Fixed Deposit Accounts", href: "/OpenAccount" },
+    { icon: <UserPlus className="w-7 h-7 text-green-600" />, title: "Open Account", description: "Register Customers and Open New Accounts", href: "/OpenAccount" },
     { icon: <PiggyBank className="w-7 h-7 text-green-600" />, title: "New Deposit", description: "Create a New Customer Deposit Request", href: "/NewDeposit" },
     { icon: <Banknote className="w-7 h-7 text-green-600" />, title: "Withdrawal", description: "Process a Customer Withdrawal Request", href: "/Withdrawal" },
     { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
