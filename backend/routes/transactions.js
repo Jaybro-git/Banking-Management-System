@@ -97,6 +97,27 @@ async function recordDeposit(client, accountId, amount, description = 'Deposit')
   }
 }
 
+// Record FD Interest transaction
+async function recordFDInterest(client, accountId, amount, description = 'FD Interest', balanceBefore) {
+  try {
+    const transactionId = await generateTransactionId(client);
+    const referenceNumber = generateReferenceNumber();
+
+    await client.query(
+      `INSERT INTO transaction (
+        transaction_id, account_id, transaction_type, amount,
+        balance_before, time_date_stamp, description, status, reference_number
+      ) VALUES ($1, $2, 'FD_INTEREST', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
+      [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
+    );
+
+    return { transactionId, referenceNumber };
+  } catch (err) {
+    console.error('Error recording FD interest:', err);
+    throw new Error('Failed to record FD interest transaction');
+  }
+}
+
 // Get transaction history for an account
 router.get('/account/:accountId/history', authenticateToken, async (req, res) => {
   const { accountId } = req.params;
@@ -153,6 +174,7 @@ module.exports = {
   router,
   recordInitialDeposit,
   recordDeposit,
+  recordFDInterest,
   generateTransactionId,
   generateReferenceNumber
 };

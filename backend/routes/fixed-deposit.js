@@ -1,0 +1,790 @@
+// fixed-deposit.js (Updated)
+// backend/routes/fixed-deposit.js
+const express = require('express');
+const pool = require('../db/index');
+const authenticateToken = require('../middleware/auth');
+const { recordFDInterest, generateTransactionId, generateReferenceNumber } = require('./transactions');
+
+const router = express.Router();
+
+// Generate unique FD ID: FD-[5-digit sequence]
+async function generateFDId(client = pool) {
+  const prefix = 'FD';
+
+  const result = await client.query(
+    `SELECT fd_id FROM fixed_deposit 
+     WHERE fd_id LIKE $1
+     ORDER BY fd_id DESC LIMIT 1`,
+    [`${prefix}-%`]
+  );
+
+  let sequence = 1;
+  if (result.rows.length > 0) {
+    const lastId = result.rows[0].fd_id;
+    const lastSeq = parseInt(lastId.split('-')[1]);
+    sequence = lastSeq + 1;
+  }
+
+  return `${prefix}-${sequence.toString().padStart(5, '0')}`;
+}
+
+// Get FD interest rate based on term
+function getFDInterestRate(term) {
+  const rates = {
+    '0.5': 13.0,  // 6 months
+    '1': 14.0,    // 1 year
+    '3': 15.0     // 3 years
+  };
+  return rates[term] || null;
+}
+
+// Calculate maturity date
+function calculateMaturityDate(startDate, termYears) {
+  const maturityDate = new Date(startDate);
+  const months = parseFloat(termYears) * 12;
+  maturityDate.setMonth(maturityDate.getMonth() + months);
+  return maturityDate.toISOString().split('T')[0];
+}
+
+// Calculate monthly interest amount
+function calculateMonthlyInterest(principal, annualRate) {
+  return (principal * (annualRate / 100)) / 12;
+}
+
+// Check account eligibility and get holders
+router.get('/check-account/:accountId', authenticateToken, async (req, res) => {
+  const { accountId } = req.params;
+
+  try {
+    // Verify account exists and is active
+    const accountResult = await pool.query(
+      `SELECT a.account_id, a.current_balance, a.status, a.account_type_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [accountId]
+    );
+
+    if (accountResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    const account = accountResult.rows[0];
+
+    if (account.status !== 'ACTIVE') {
+      return res.status(400).json({ error: 'Account is not active' });
+    }
+
+    // Check if account type is eligible for FD
+    const eligibleTypes = ['ADULT', 'TEEN', 'SENIOR', 'JOINT'];
+    const accountTypeName = account.account_type_name.toUpperCase();
+    
+    const isEligible = eligibleTypes.some(type => accountTypeName.includes(type));
+    
+    if (!isEligible) {
+      return res.status(400).json({ 
+        error: 'This account type is not eligible for Fixed Deposits. Only Adult, Teen, Senior, and Joint accounts can open FDs.' 
+      });
+    }
+
+    // Check if account already has an active FD
+    const existingFDResult = await pool.query(
+      `SELECT fd_id FROM fixed_deposit 
+       WHERE account_id = $1 AND status = 'ACTIVE'`,
+      [accountId]
+    );
+
+    if (existingFDResult.rows.length > 0) {
+      return res.status(400).json({ 
+        error: `This account already has an active Fixed Deposit (${existingFDResult.rows[0].fd_id}). Only one FD per account is allowed.` 
+      });
+    }
+
+    // Get account holders
+    const holdersResult = await pool.query(
+      `SELECT c.customer_id, c.first_name, c.last_name, c.nic_number
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1
+       ORDER BY ah.created_at ASC`,
+      [accountId]
+    );
+
+    res.json({
+      account_id: accountId,
+      account_type: account.account_type_name,
+      current_balance: account.current_balance,
+      holders: holdersResult.rows
+    });
+  } catch (err) {
+    console.error('Error checking account:', err);
+    res.status(500).json({ error: 'Failed to check account' });
+  }
+});
+
+// Search Fixed Deposits
+router.get('/search', authenticateToken, async (req, res) => {
+  const { fdNumber, accountNumber, customerName, filterType } = req.query;
+  const agentId = req.user.employee_id;
+
+  try {
+    let query = `
+      SELECT 
+        fd.fd_id,
+        fd.account_id,
+        fd.fd_type,
+        fd.amount,
+        fd.interest_rate,
+        fd.start_date,
+        fd.maturity_date,
+        fd.status,
+        a.current_balance as account_balance,
+        at.account_type_name,
+        c.customer_id,
+        c.first_name,
+        c.last_name,
+        c.nic_number
+      FROM fixed_deposit fd
+      JOIN account a ON fd.account_id = a.account_id
+      JOIN account_type at ON a.account_type_id = at.account_type_id
+      JOIN account_holder ah ON a.account_id = ah.account_id
+      JOIN customer c ON ah.customer_id = c.customer_id
+      WHERE 1=1
+    `;
+
+    const params = [];
+    let paramIndex = 1;
+
+    // Apply filter type
+    if (filterType) {
+      if (filterType === 'ACTIVE' || filterType === 'MATURED' || filterType === 'CLOSED') {
+        query += ` AND fd.status = $${paramIndex}`;
+        params.push(filterType);
+        paramIndex++;
+      } else if (filterType === '6_MONTHS' || filterType === '1_YEAR' || filterType === '3_YEARS') {
+        query += ` AND fd.fd_type = $${paramIndex}`;
+        params.push(filterType);
+        paramIndex++;
+      } else if (filterType === 'processed_by_me') {
+        query += ` AND c.agent_id = $${paramIndex}`;
+        params.push(agentId);
+        paramIndex++;
+      }
+    }
+
+    if (fdNumber) {
+      query += ` AND fd.fd_id = $${paramIndex}`;
+      params.push(fdNumber);
+      paramIndex++;
+    }
+
+    if (accountNumber) {
+      query += ` AND fd.account_id = $${paramIndex}`;
+      params.push(accountNumber);
+      paramIndex++;
+    }
+
+    if (customerName) {
+      query += ` AND EXISTS (
+        SELECT 1 FROM account_holder ah2
+        JOIN customer c2 ON ah2.customer_id = c2.customer_id
+        WHERE ah2.account_id = a.account_id
+        AND (LOWER(c2.first_name) LIKE LOWER($${paramIndex}) OR LOWER(c2.last_name) LIKE LOWER($${paramIndex}))
+      )`;
+      params.push(`%${customerName}%`);
+      paramIndex++;
+    }
+
+    query += ' ORDER BY fd.start_date DESC';
+
+    const result = await pool.query(query, params);
+
+    // Calculate additional info for each FD
+    const fdsWithDetails = await Promise.all(result.rows.map(async (fd) => {
+      const today = new Date();
+      const maturityDate = new Date(fd.maturity_date);
+      const daysToMaturity = Math.ceil((maturityDate - today) / (1000 * 60 * 60 * 24));
+      
+      // Calculate current value (principal + accumulated interest)
+      const monthsElapsed = Math.floor((today - new Date(fd.start_date)) / (1000 * 60 * 60 * 24 * 30));
+      const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
+      const accumulatedInterest = monthlyInterest * monthsElapsed;
+      const currentValue = parseFloat(fd.amount) + accumulatedInterest;
+
+      // Get last interest payment for THIS specific FD
+      const lastInterestResult = await pool.query(
+        `SELECT time_date_stamp, amount
+         FROM transaction
+         WHERE account_id = $1 
+         AND transaction_type = 'FD_INTEREST'
+         AND description LIKE $2
+         ORDER BY time_date_stamp DESC
+         LIMIT 1`,
+        [fd.account_id, `%${fd.fd_id}%`]
+      );
+
+      return {
+        ...fd,
+        days_to_maturity: daysToMaturity > 0 ? daysToMaturity : 0,
+        current_value: currentValue.toFixed(2),
+        monthly_interest: monthlyInterest.toFixed(2),
+        customer_name: `${fd.first_name} ${fd.last_name}`,
+        last_interest_paid: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].time_date_stamp : null,
+        last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null
+      };
+    }));
+
+    res.json(fdsWithDetails);
+  } catch (err) {
+    console.error('Error searching FDs:', err);
+    res.status(500).json({ error: 'Failed to search fixed deposits' });
+  }
+});
+
+// Get FD by ID
+router.get('/:fdId', authenticateToken, async (req, res) => {
+  const { fdId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+        fd.fd_id,
+        fd.account_id,
+        fd.fd_type,
+        fd.amount,
+        fd.interest_rate,
+        fd.start_date,
+        fd.maturity_date,
+        fd.status,
+        a.current_balance as account_balance,
+        at.account_type_name,
+        c.customer_id,
+        c.first_name,
+        c.last_name,
+        c.nic_number,
+        c.phone_number,
+        c.email
+      FROM fixed_deposit fd
+      JOIN account a ON fd.account_id = a.account_id
+      JOIN account_type at ON a.account_type_id = at.account_type_id
+      JOIN account_holder ah ON a.account_id = ah.account_id
+      JOIN customer c ON ah.customer_id = c.customer_id
+      WHERE fd.fd_id = $1`,
+      [fdId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Fixed deposit not found' });
+    }
+
+    // Group customer names for single FD
+    const fd = result.rows[0];
+    const customerNames = result.rows.map(row => `${row.first_name} ${row.last_name}`).join(', ');
+
+    const today = new Date();
+    const maturityDate = new Date(fd.maturity_date);
+    const daysToMaturity = Math.ceil((maturityDate - today) / (1000 * 60 * 60 * 24));
+    
+    // Calculate current value
+    const monthsElapsed = Math.floor((today - new Date(fd.start_date)) / (1000 * 60 * 60 * 24 * 30));
+    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
+    const accumulatedInterest = monthlyInterest * monthsElapsed;
+    const currentValue = parseFloat(fd.amount) + accumulatedInterest;
+
+    // Get last interest payment for THIS specific FD
+    const lastInterestResult = await pool.query(
+      `SELECT time_date_stamp, amount
+       FROM transaction
+       WHERE account_id = $1 
+       AND transaction_type = 'FD_INTEREST'
+       AND description LIKE $2
+       ORDER BY time_date_stamp DESC
+       LIMIT 1`,
+      [fd.account_id, `%${fdId}%`]
+    );
+
+    const fdWithDetails = {
+      ...fd,
+      days_to_maturity: daysToMaturity > 0 ? daysToMaturity : 0,
+      current_value: currentValue.toFixed(2),
+      monthly_interest: monthlyInterest.toFixed(2),
+      customer_name: customerNames,
+      last_interest_paid: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].time_date_stamp : null,
+      last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null
+    };
+
+    res.json(fdWithDetails);
+  } catch (err) {
+    console.error('Error fetching FD:', err);
+    res.status(500).json({ error: 'Failed to fetch fixed deposit details' });
+  }
+});
+
+// Create new Fixed Deposit
+router.post('/create', authenticateToken, async (req, res) => {
+  const { accountId, amount, term } = req.body;
+
+  if (!accountId || !amount || !term) {
+    return res.status(400).json({ error: 'Account ID, amount, and term are required' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Verify account exists and is active
+    const accountResult = await client.query(
+      `SELECT a.account_id, a.current_balance, a.status, a.account_type_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [accountId]
+    );
+
+    if (accountResult.rows.length === 0) {
+      throw new Error('Account not found');
+    }
+
+    const account = accountResult.rows[0];
+
+    if (account.status !== 'ACTIVE') {
+      throw new Error('Account is not active');
+    }
+
+    // Check if account type is eligible for FD (ADULT, TEEN, SENIOR, JOINT)
+    const eligibleTypes = ['ADULT', 'TEEN', 'SENIOR', 'JOINT'];
+    const accountTypeName = account.account_type_name.toUpperCase();
+    
+    const isEligible = eligibleTypes.some(type => accountTypeName.includes(type));
+    
+    if (!isEligible) {
+      throw new Error('This account type is not eligible for Fixed Deposits. Only Adult, Teen, Senior, and Joint accounts can open FDs.');
+    }
+
+    // Check if account already has an FD
+    const existingFDResult = await client.query(
+      `SELECT fd_id FROM fixed_deposit 
+       WHERE account_id = $1 AND status = 'ACTIVE'`,
+      [accountId]
+    );
+
+    if (existingFDResult.rows.length > 0) {
+      throw new Error('This account already has an active Fixed Deposit. Only one FD per account is allowed.');
+    }
+
+    // Validate amount
+    const fdAmount = parseFloat(amount);
+    if (fdAmount <= 0) {
+      throw new Error('FD amount must be greater than zero');
+    }
+
+    // Check if account has sufficient balance
+    const currentBalance = parseFloat(account.current_balance);
+    if (currentBalance < fdAmount) {
+      throw new Error(`Insufficient balance. Current balance: LKR ${currentBalance.toFixed(2)}`);
+    }
+
+    // Get interest rate for the term
+    const interestRate = getFDInterestRate(term);
+    if (!interestRate) {
+      throw new Error('Invalid term selected');
+    }
+
+    // Generate FD ID
+    const fdId = await generateFDId(client);
+
+    // Calculate dates
+    const startDate = new Date().toISOString().split('T')[0];
+    const maturityDate = calculateMaturityDate(startDate, term);
+
+    // Determine FD type based on term
+    let fdType;
+    if (term === '0.5') fdType = '6_MONTHS';
+    else if (term === '1') fdType = '1_YEAR';
+    else if (term === '3') fdType = '3_YEARS';
+
+    // Create Fixed Deposit
+    await client.query(
+      `INSERT INTO fixed_deposit (
+        fd_id, account_id, fd_type, amount, interest_rate,
+        start_date, maturity_date, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE')`,
+      [fdId, accountId, fdType, fdAmount, interestRate, startDate, maturityDate]
+    );
+
+    // Deduct amount from savings account
+    await client.query(
+      `UPDATE account SET current_balance = current_balance - $1
+       WHERE account_id = $2`,
+      [fdAmount, accountId]
+    );
+
+    // Record transaction for FD creation
+    const transactionId = await generateTransactionId(client);
+    const referenceNumber = generateReferenceNumber();
+
+    await client.query(
+      `INSERT INTO transaction (
+        transaction_id, account_id, transaction_type, amount,
+        balance_before, time_date_stamp, description, status, reference_number
+      ) VALUES ($1, $2, 'WITHDRAWAL', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
+      [transactionId, accountId, fdAmount, currentBalance, 
+       `Fixed Deposit opened - ${fdId}`, referenceNumber]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: 'Fixed Deposit created successfully',
+      fd: {
+        fd_id: fdId,
+        account_id: accountId,
+        fd_type: fdType,
+        amount: fdAmount,
+        interest_rate: interestRate,
+        start_date: startDate,
+        maturity_date: maturityDate,
+        status: 'ACTIVE',
+        monthly_interest: calculateMonthlyInterest(fdAmount, interestRate).toFixed(2)
+      },
+      transaction: {
+        transaction_id: transactionId,
+        reference_number: referenceNumber
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error creating FD:', err);
+    res.status(400).json({ error: err.message || 'Failed to create fixed deposit' });
+  } finally {
+    client.release();
+  }
+});
+
+// Pay FD Interest
+router.post('/pay-interest/:fdId', authenticateToken, async (req, res) => {
+  const { fdId } = req.params;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get FD details
+    const fdResult = await client.query(
+      `SELECT fd.*, a.current_balance
+       FROM fixed_deposit fd
+       JOIN account a ON fd.account_id = a.account_id
+       WHERE fd.fd_id = $1 AND fd.status = 'ACTIVE'`,
+      [fdId]
+    );
+
+    if (fdResult.rows.length === 0) {
+      throw new Error('Active Fixed Deposit not found');
+    }
+
+    const fd = fdResult.rows[0];
+
+    // Calculate monthly interest
+    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
+
+    // Check last interest payment to ensure 30 days have passed
+    const lastPaymentResult = await client.query(
+      `SELECT time_date_stamp
+       FROM transaction
+       WHERE account_id = $1 
+       AND transaction_type = 'FD_INTEREST'
+       AND description LIKE $2
+       ORDER BY time_date_stamp DESC
+       LIMIT 1`,
+      [fd.account_id, `%${fdId}%`]
+    );
+
+    if (lastPaymentResult.rows.length > 0) {
+      const lastPayment = new Date(lastPaymentResult.rows[0].time_date_stamp);
+      const daysSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceLastPayment < 30) {
+        throw new Error(`Interest can only be paid after 30 days. Days since last payment: ${daysSinceLastPayment}`);
+      }
+    }
+
+    // Record FD interest transaction
+    const { transactionId, referenceNumber } = await recordFDInterest(
+      client,
+      fd.account_id,
+      monthlyInterest,
+      `Monthly FD Interest - ${fdId}`,
+      parseFloat(fd.current_balance)
+    );
+
+    // Update account balance
+    await client.query(
+      `UPDATE account SET current_balance = current_balance + $1
+       WHERE account_id = $2`,
+      [monthlyInterest, fd.account_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Interest paid successfully',
+      transaction: {
+        transaction_id: transactionId,
+        reference_number: referenceNumber,
+        amount: monthlyInterest.toFixed(2),
+        account_id: fd.account_id,
+        fd_id: fdId
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error paying FD interest:', err);
+    res.status(400).json({ error: err.message || 'Failed to pay interest' });
+  } finally {
+    client.release();
+  }
+});
+
+// Renew Fixed Deposit
+router.post('/renew/:fdId', authenticateToken, async (req, res) => {
+  const { fdId } = req.params;
+  const { term } = req.body;
+
+  if (!term) {
+    return res.status(400).json({ error: 'Term is required for renewal' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get FD details
+    const fdResult = await client.query(
+      `SELECT fd.*, a.current_balance
+       FROM fixed_deposit fd
+       JOIN account a ON fd.account_id = a.account_id
+       WHERE fd.fd_id = $1`,
+      [fdId]
+    );
+
+    if (fdResult.rows.length === 0) {
+      throw new Error('Fixed Deposit not found');
+    }
+
+    const oldFd = fdResult.rows[0];
+
+    // Close old FD
+    await client.query(
+      `UPDATE fixed_deposit SET status = 'MATURED'
+       WHERE fd_id = $1`,
+      [fdId]
+    );
+
+    // Calculate new FD details
+    const interestRate = getFDInterestRate(term);
+    if (!interestRate) {
+      throw new Error('Invalid term selected');
+    }
+
+    const newFdId = await generateFDId(client);
+    const startDate = new Date().toISOString().split('T')[0];
+    const maturityDate = calculateMaturityDate(startDate, term);
+
+    let fdType;
+    if (term === '0.5') fdType = '6_MONTHS';
+    else if (term === '1') fdType = '1_YEAR';
+    else if (term === '3') fdType = '3_YEARS';
+
+    // Create new FD with same amount
+    await client.query(
+      `INSERT INTO fixed_deposit (
+        fd_id, account_id, fd_type, amount, interest_rate,
+        start_date, maturity_date, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE')`,
+      [newFdId, oldFd.account_id, fdType, oldFd.amount, interestRate, startDate, maturityDate]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Fixed Deposit renewed successfully',
+      old_fd_id: fdId,
+      new_fd: {
+        fd_id: newFdId,
+        account_id: oldFd.account_id,
+        fd_type: fdType,
+        amount: oldFd.amount,
+        interest_rate: interestRate,
+        start_date: startDate,
+        maturity_date: maturityDate,
+        status: 'ACTIVE'
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error renewing FD:', err);
+    res.status(400).json({ error: err.message || 'Failed to renew fixed deposit' });
+  } finally {
+    client.release();
+  }
+});
+
+// Close Fixed Deposit (Premature)
+router.post('/close/:fdId', authenticateToken, async (req, res) => {
+  const { fdId } = req.params;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get FD details
+    const fdResult = await client.query(
+      `SELECT fd.*, a.current_balance
+       FROM fixed_deposit fd
+       JOIN account a ON fd.account_id = a.account_id
+       WHERE fd.fd_id = $1 AND fd.status = 'ACTIVE'`,
+      [fdId]
+    );
+
+    if (fdResult.rows.length === 0) {
+      throw new Error('Active Fixed Deposit not found');
+    }
+
+    const fd = fdResult.rows[0];
+
+    // Calculate any pending interest (no penalty, just pro-rated interest)
+    const today = new Date();
+    const startDate = new Date(fd.start_date);
+    const monthsElapsed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 30));
+    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
+    
+    // Get total interest already paid for THIS specific FD
+    const paidInterestResult = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) as total_interest_paid
+       FROM transaction
+       WHERE account_id = $1 
+       AND transaction_type = 'FD_INTEREST'
+       AND description LIKE $2`,
+      [fd.account_id, `%${fdId}%`]
+    );
+
+    const totalInterestPaid = parseFloat(paidInterestResult.rows[0].total_interest_paid);
+    const totalInterestAccrued = monthlyInterest * monthsElapsed;
+    const pendingInterest = Math.max(0, totalInterestAccrued - totalInterestPaid);
+
+    // Close FD
+    await client.query(
+      `UPDATE fixed_deposit SET status = 'CLOSED'
+       WHERE fd_id = $1`,
+      [fdId]
+    );
+
+    // Return principal to account
+    const balanceBefore = parseFloat(fd.current_balance);
+    await client.query(
+      `UPDATE account SET current_balance = current_balance + $1
+       WHERE account_id = $2`,
+      [parseFloat(fd.amount), fd.account_id]
+    );
+
+    // Record principal return transaction
+    const transactionId1 = await generateTransactionId(client);
+    const referenceNumber1 = generateReferenceNumber();
+
+    await client.query(
+      `INSERT INTO transaction (
+        transaction_id, account_id, transaction_type, amount,
+        balance_before, time_date_stamp, description, status, reference_number
+      ) VALUES ($1, $2, 'DEPOSIT', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
+      [transactionId1, fd.account_id, fd.amount, balanceBefore,
+       `FD Closure - Principal returned - ${fdId}`, referenceNumber1]
+    );
+
+    // Pay any pending interest if applicable
+    let interestTransaction = null;
+    if (pendingInterest > 0) {
+      const newBalance = balanceBefore + parseFloat(fd.amount);
+      const { transactionId, referenceNumber } = await recordFDInterest(
+        client,
+        fd.account_id,
+        pendingInterest,
+        `FD Closure - Final interest payment - ${fdId}`,
+        newBalance
+      );
+
+      await client.query(
+        `UPDATE account SET current_balance = current_balance + $1
+         WHERE account_id = $2`,
+        [pendingInterest, fd.account_id]
+      );
+
+      interestTransaction = { transactionId, referenceNumber, amount: pendingInterest.toFixed(2) };
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Fixed Deposit closed successfully',
+      fd_id: fdId,
+      principal_returned: parseFloat(fd.amount).toFixed(2),
+      pending_interest_paid: pendingInterest > 0 ? pendingInterest.toFixed(2) : '0.00',
+      total_returned: (parseFloat(fd.amount) + pendingInterest).toFixed(2),
+      transactions: {
+        principal: {
+          transaction_id: transactionId1,
+          reference_number: referenceNumber1
+        },
+        interest: interestTransaction
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error closing FD:', err);
+    res.status(400).json({ error: err.message || 'Failed to close fixed deposit' });
+  } finally {
+    client.release();
+  }
+});
+
+// Get FD interest payment history
+router.get('/:fdId/interest-history', authenticateToken, async (req, res) => {
+  const { fdId } = req.params;
+
+  try {
+    // Get FD account
+    const fdResult = await pool.query(
+      'SELECT account_id FROM fixed_deposit WHERE fd_id = $1',
+      [fdId]
+    );
+
+    if (fdResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Fixed deposit not found' });
+    }
+
+    const accountId = fdResult.rows[0].account_id;
+
+    // Get all FD interest transactions for THIS specific FD
+    const result = await pool.query(
+      `SELECT 
+        transaction_id, amount, balance_before, time_date_stamp,
+        description, reference_number
+       FROM transaction
+       WHERE account_id = $1 
+       AND transaction_type = 'FD_INTEREST'
+       AND description LIKE $2
+       ORDER BY time_date_stamp DESC`,
+      [accountId, `%${fdId}%`]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching FD interest history:', err);
+    res.status(500).json({ error: 'Failed to fetch interest payment history' });
+  }
+});
+
+module.exports = router;

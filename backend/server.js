@@ -16,6 +16,7 @@ const authRoutes = require('./routes/auth');
 const accountRoutes = require('./routes/accounts');
 const { router: transactionsRouter } = require('./routes/transactions');
 const customerLookupRoutes = require('./routes/customerLookup');
+const fixedDepositRoutes = require('./routes/fixed-deposit');
 
 app.use('/api/admin-check', adminCheckRoutes);
 app.use('/api/branches', branchRoutes);
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/customer-lookup', customerLookupRoutes);
+app.use('/api/fixed-deposit', fixedDepositRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -48,19 +48,9 @@ export default function AgentDashboard() {
   const [filterType, setFilterType] = useState<"All" | "Deposit" | "Withdrawal">("All");
   const [searchField, setSearchField] = useState<"customer" | "account" | "ref" | "date">("customer");
 
-  type CustomerFilterType =
-    | "All"
-    | "Savings Accounts"
-    | "Joint Accounts"
-    | "Fixed Deposits"
-    | "Children's Accounts"
-    | "Teen Accounts"
-    | "Processed by Me";
-
-  type CustomerSearchField = "account" | "customer";
-
-  const [customerFilterType, setCustomerFilterType] = useState<CustomerFilterType>("All");
-  const [customerSearchField, setCustomerSearchField] = useState<CustomerSearchField>("account");
+  // Use generic string type for customer filters/search
+  const [customerFilterType, setCustomerFilterType] = useState<string>("All");
+  const [customerSearchField, setCustomerSearchField] = useState<string>("account");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
   const transactions = [
@@ -97,7 +87,6 @@ export default function AgentDashboard() {
     { icon: <PiggyBank className="w-7 h-7 text-green-600" />, title: "New Deposit", description: "Create a New Customer Deposit Request", href: "/NewDeposit" },
     { icon: <Banknote className="w-7 h-7 text-green-600" />, title: "Withdrawal", description: "Process a Customer Withdrawal Request", href: "/Withdrawal" },
     { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
-    { icon: <Users className="w-7 h-7 text-green-600" />, title: "Account Holders", description: "View and Manage Account Holders", href: "/Accounts" },
     { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Transactions History", description: "View Transaction History for Accounts", href: "/Transactions" },
     { icon: <BarChart2 className="w-7 h-7 text-green-600" />, title: "View Reports", description: "Generate and View Detailed Reports on Transactions and Accounts", href: "/Reports" },
     { icon: <Headset className="w-7 h-7 text-green-600" />, title: "Customer Support", description: "Assist Customers With Their Queries and Issues", href: "/test" },
@@ -131,11 +120,10 @@ export default function AgentDashboard() {
         )}
         {activeTab === "customers" && (
           <CustomersTab
-            transactions={transactions}
-            customerFilterType={customerFilterType}
-            setCustomerFilterType={setCustomerFilterType}
-            customerSearchField={customerSearchField}
-            setCustomerSearchField={setCustomerSearchField}
+            customerFilterType={customerFilterType as any} // cast to satisfy TS
+            setCustomerFilterType={(val: any) => setCustomerFilterType(val)}
+            customerSearchField={customerSearchField as any}
+            setCustomerSearchField={(val: any) => setCustomerSearchField(val)}
             customerSearchQuery={customerSearchQuery}
             setCustomerSearchQuery={setCustomerSearchQuery}
           />

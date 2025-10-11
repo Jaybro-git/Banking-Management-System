@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/app/components/ui/Button';
 import { TextInput } from '@/app/components/ui/TextInput';
 
@@ -18,95 +18,407 @@ const Header: React.FC<HeaderProps> = ({ activeTab }) => {
       </div>
       <div className="flex items-center space-x-4">
         <Link href="/" passHref>
-        <Button type="button" variant="danger" size="md" className="w-full mt-6">
+          <Button type="button" variant="danger" size="md" className="w-full mt-6">
             Cancel
-        </Button>
+          </Button>
         </Link>
       </div>
     </header>
   );
 };
 
+interface FDDetails {
+  fd_id: string;
+  account_id: string;
+  customer_name: string;
+  amount: string;
+  interest_rate: string;
+  fd_type: string;
+  start_date: string;
+  maturity_date: string;
+  status: string;
+  current_value: string;
+  monthly_interest: string;
+  days_to_maturity: number;
+  account_type_name: string;
+  last_interest_paid: string | null;
+  last_interest_amount: string | null;
+}
+
+interface AccountHolder {
+  customer_id: string;
+  first_name: string;
+  last_name: string;
+  nic_number: string;
+}
+
+type FDFilterType = 'All' | 'Active' | 'Matured' | 'Closed' | '6 Months' | '1 Year' | '3 Years';
+
+type FDSearchField = 'fdNumber' | 'accountNumber' | 'customerName';
+
 export default function FixedDepositPage() {
-  const [activeTab, setActiveTab] = useState<'search' | 'create' | 'renew'>('search');
-  const [searchForm, setSearchForm] = useState({
-    fdNumber: '',
-    accountNumber: '',
-    customerName: ''
-  });
+  const [activeTab, setActiveTab] = useState<'search' | 'create'>('search');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [fdFilterType, setFdFilterType] = useState<FDFilterType>('All');
+  const [fdSearchField, setFdSearchField] = useState<FDSearchField>('fdNumber');
+  const [fdSearchQuery, setFdSearchQuery] = useState('');
+  const [total, setTotal] = useState(0);
 
   const [createForm, setCreateForm] = useState({
     accountNumber: '',
-    depositAmount: '',
-    term: '',
-    interestRate: '',
-    interestPayment: 'maturity',
-    nomineeDetails: '',
-    specialInstructions: '',
-    receiptNumber: ''
+    amount: '',
+    term: ''
   });
 
-  const [selectedFD, setSelectedFD] = useState({
-    fdNumber: 'FD001234567',
-    customerName: 'John Doe',
-    accountNumber: '1234567890',
-    principalAmount: '500,000.00',
-    interestRate: '9.5',
-    term: '2 Years',
-    startDate: '2024-01-15',
-    maturityDate: '2026-01-15',
-    currentValue: '599,500.00',
-    status: 'Active',
-    interestPayment: 'Quarterly',
-    lastInterestPaid: '2024-07-15',
-    nextInterestDue: '2024-10-15'
-  });
+  const [accountHolders, setAccountHolders] = useState<AccountHolder[]>([]);
+  const [checkingAccount, setCheckingAccount] = useState(false);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchForm({ ...searchForm, [e.target.name]: e.target.value });
+  const [searchResults, setSearchResults] = useState<FDDetails[]>([]);
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+
+  const filterTypes: FDFilterType[] = [
+    'All',
+    'Active',
+    'Matured',
+    'Closed',
+    '6 Months',
+    '1 Year',
+    '3 Years',
+  ];
+
+  const fetchFDs = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let backendFilter = '';
+      if (fdFilterType === 'Active') backendFilter = 'ACTIVE';
+      else if (fdFilterType === 'Matured') backendFilter = 'MATURED';
+      else if (fdFilterType === 'Closed') backendFilter = 'CLOSED';
+      else if (fdFilterType === '6 Months') backendFilter = '6_MONTHS';
+      else if (fdFilterType === '1 Year') backendFilter = '1_YEAR';
+      else if (fdFilterType === '3 Years') backendFilter = '3_YEARS';
+      else backendFilter = ''; // for 'All'
+
+      const queryParams = new URLSearchParams({
+        filterType: backendFilter,
+        limit: '100',
+        offset: '0',
+      });
+
+      if (fdSearchQuery) {
+        const paramKey = fdSearchField === 'fdNumber' ? 'fdNumber' :
+                         fdSearchField === 'accountNumber' ? 'accountNumber' :
+                         'customerName';
+        queryParams.append(paramKey, fdSearchQuery);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/search?${queryParams.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.status === 401) throw new Error('Session expired. Please log in again.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Group by fd_id and concatenate customer_names for joint accounts
+      const groupedData = data.reduce((acc: FDDetails[], current: FDDetails) => {
+        const existing = acc.find(f => f.fd_id === current.fd_id);
+        if (existing) {
+          existing.customer_name += `, ${current.customer_name}`;
+        } else {
+          acc.push({ ...current });
+        }
+        return acc;
+      }, []);
+
+      setSearchResults(groupedData || []);
+      setTotal(groupedData.length || 0);
+    } catch (err: any) {
+      console.error('Error fetching FDs:', err);
+      setError(err.message || 'Failed to fetch fixed deposits');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setCreateForm({ ...createForm, [e.target.name]: e.target.value });
+  useEffect(() => {
+    if (activeTab === 'search') {
+      const debounceTimer = setTimeout(() => {
+        fetchFDs();
+      }, 300);
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [activeTab, fdFilterType, fdSearchField, fdSearchQuery]);
+
+  const handleCreateChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setCreateForm({ ...createForm, [name]: value });
+    
+    // Reset account holders when account number changes
+    if (name === 'accountNumber') {
+      setAccountHolders([]);
+    }
   };
 
-  const generateFDNumber = () => {
-    const fdNum = 'FD' + Date.now().toString().slice(-9);
-    setCreateForm({ ...createForm, receiptNumber: fdNum });
+  const handleCheckAccount = async () => {
+    if (!createForm.accountNumber) {
+      alert('Please enter an account number');
+      return;
+    }
+
+    setCheckingAccount(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/check-account/${createForm.accountNumber}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check account');
+      }
+
+      const data = await response.json();
+      setAccountHolders(data.holders || []);
+    } catch (err: any) {
+      alert(err.message);
+      setAccountHolders([]);
+    } finally {
+      setCheckingAccount(false);
+    }
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', 
+        body: JSON.stringify({
+          accountId: createForm.accountNumber,
+          amount: parseFloat(createForm.amount),
+          term: createForm.term
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create fixed deposit');
+      }
+
+      const data = await response.json();
+      alert(`✓ Fixed Deposit created successfully!\n\nFD Number: ${data.fd.fd_id}\nAmount: LKR ${parseFloat(data.fd.amount).toFixed(2)}\nInterest Rate: ${data.fd.interest_rate}%\nMonthly Interest: LKR ${data.fd.monthly_interest}\n\nReference: ${data.transaction.reference_number}`);
+      
+      // Reset form
+      setCreateForm({
+        accountNumber: '',
+        amount: '',
+        term: ''
+      });
+      setAccountHolders([]);
+
+      // Switch to search tab to view the created FD
+      setTimeout(() => {
+        setActiveTab('search');
+        fetchFDs();
+      }, 500);
+    } catch (err: any) {
+      alert(`✗ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const payInterest = async (fdId: string) => {
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/pay-interest/${fdId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to pay interest');
+      }
+
+      const data = await response.json();
+      alert(`✓ Interest payment successful!\n\nAmount: LKR ${parseFloat(data.transaction.amount).toFixed(2)}\nReference: ${data.transaction.reference_number}\nFD: ${fdId}`);
+      
+      // Refresh list
+      fetchFDs();
+    } catch (err: any) {
+      alert(`✗ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renewFD = async (fdId: string) => {
+    const term = prompt('Enter new term (0.5 for 6 months, 1 for 1 year, 3 for 3 years):');
+    if (!term) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/renew/${fdId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ term })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to renew FD');
+      }
+
+      const data = await response.json();
+      alert(`✓ FD renewed successfully!\n\nOld FD: ${fdId}\nNew FD: ${data.new_fd.fd_id}\nAmount: LKR ${parseFloat(data.new_fd.amount).toFixed(2)}\nNew Interest Rate: ${data.new_fd.interest_rate}%`);
+      
+      // Refresh list
+      fetchFDs();
+    } catch (err: any) {
+      alert(`✗ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeFD = async (fdId: string) => {
+    if (!confirm('Are you sure you want to close this Fixed Deposit? This action cannot be undone.')) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/fixed-deposit/close/${fdId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to close FD');
+      }
+
+      const data = await response.json();
+      alert(`✓ FD closed successfully!\n\nFD Number: ${fdId}\nPrincipal Returned: LKR ${data.principal_returned}\nPending Interest: LKR ${data.pending_interest_paid}\nTotal Returned: LKR ${data.total_returned}`);
+      
+      // Refresh list
+      fetchFDs();
+    } catch (err: any) {
+      alert(`✗ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTermDisplay = (fdType: string) => {
+    switch (fdType) {
+      case '6_MONTHS': return '6 Months';
+      case '1_YEAR': return '1 Year';
+      case '3_YEARS': return '3 Years';
+      default: return fdType;
+    }
+  };
+
+  const getInterestRateDisplay = (term: string) => {
+    switch (term) {
+      case '0.5': return '13';
+      case '1': return '14';
+      case '3': return '15';
+      default: return '';
+    }
   };
 
   const calculateMaturityAmount = () => {
-    if (!createForm.depositAmount || !createForm.interestRate || !createForm.term) return 0;
-    const principal = parseFloat(createForm.depositAmount);
-    const rate = parseFloat(createForm.interestRate) / 100;
-    const years = parseFloat(createForm.term.split(' ')[0]);
-    return principal * Math.pow(1 + rate, years);
+    if (!createForm.amount || !createForm.term) return 0;
+    const principal = parseFloat(createForm.amount);
+    const term = parseFloat(createForm.term);
+    let rate = 0;
+    
+    if (term === 0.5) rate = 0.13;
+    else if (term === 1) rate = 0.14;
+    else if (term === 3) rate = 0.15;
+    
+    const months = term * 12;
+    const monthlyRate = rate / 12;
+    const maturityAmount = principal * Math.pow(1 + monthlyRate, months);
+    
+    return maturityAmount;
   };
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert(`Fixed Deposit created successfully! FD Number: ${createForm.receiptNumber}`);
+  const calculateMonthlyInterest = () => {
+    if (!createForm.amount || !createForm.term) return 0;
+    const principal = parseFloat(createForm.amount);
+    const rateStr = getInterestRateDisplay(createForm.term);
+    if (!rateStr) return 0;
+    const rate = parseFloat(rateStr) / 100;
+    return (principal * rate) / 12;
   };
 
-  const payInterest = () => {
-    alert(`Interest payment of LKR 11,875.00 processed for FD ${selectedFD.fdNumber}`);
+  const formatCurrency = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return new Intl.NumberFormat('en-LK', {
+      style: 'currency',
+      currency: 'LKR',
+      minimumFractionDigits: 2,
+    }).format(num);
   };
 
-  const renewFD = () => {
-    alert(`FD ${selectedFD.fdNumber} has been renewed for another ${selectedFD.term}`);
-  };
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    date.setHours(date.getHours() + 5);
+    date.setMinutes(date.getMinutes() + 30);
 
-  const closeFD = () => {
-    if (confirm('Are you sure you want to close this Fixed Deposit? This action cannot be undone.')) {
-      alert(`FD ${selectedFD.fdNumber} has been closed. Amount LKR ${selectedFD.currentValue} will be transferred to linked account.`);
-    }
+    return date.toLocaleString('en-LK', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
   };
 
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="mx-auto px-8 py-6 max-w-7xl">
         <Header activeTab="fixed-deposit" />
-        
+
         {/* Tab Navigation */}
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
@@ -133,161 +445,205 @@ export default function FixedDepositPage() {
           
           {/* Search & Manage Tab */}
           {activeTab === 'search' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Search Fixed Deposits</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <TextInput
-                  label="FD Number"
-                  name="fdNumber"
-                  value={searchForm.fdNumber}
-                  onChange={handleSearchChange}
-                  placeholder="Enter FD number"
-                />
-                <TextInput
-                  label="Account Number"
-                  name="accountNumber"
-                  value={searchForm.accountNumber}
-                  onChange={handleSearchChange}
-                  placeholder="Enter account number"
-                />
-                <TextInput
-                  label="Customer Name"
-                  name="customerName"
-                  value={searchForm.customerName}
-                  onChange={handleSearchChange}
-                  placeholder="Enter customer name"
-                />
-              </div>
-
-              <div className="flex space-x-4">
-                <Button type="button" className="bg-emerald-600 text-white">
-                  Search FDs
-                </Button>
-                <Button type="button" variant="secondary">
-                  Clear
-                </Button>
-              </div>
-
-              {/* FD Details Display */}
-              <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-6">
-                  <div className="bg-emerald-50 p-6 rounded-lg border border-emerald-200">
-                    <h3 className="font-semibold text-gray-800 mb-4">Fixed Deposit Details</h3>
-                    <div className="space-y-3 text-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">FD Number:</span>
-                        <span>{selectedFD.fdNumber}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Customer:</span>
-                        <span>{selectedFD.customerName}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Account:</span>
-                        <span>{selectedFD.accountNumber}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Principal:</span>
-                        <span>LKR {selectedFD.principalAmount}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Interest Rate:</span>
-                        <span>{selectedFD.interestRate}% p.a.</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Term:</span>
-                        <span>{selectedFD.term}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Status:</span>
-                        <span className="text-green-600 font-medium">{selectedFD.status}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                    <h3 className="font-semibold text-gray-800 mb-4">Maturity Information</h3>
-                    <div className="space-y-3 text-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Start Date:</span>
-                        <span>{selectedFD.startDate}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Maturity Date:</span>
-                        <span>{selectedFD.maturityDate}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Current Value:</span>
-                        <span className="font-semibold text-blue-600">LKR {selectedFD.currentValue}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Days to Maturity:</span>
-                        <span>456 days</span>
-                      </div>
-                    </div>
-                  </div>
+            <div className="flex flex-col h-[calc(100vh-270px)]">
+              {/* Sticky Header Section */}
+              <div className="bg-white sticky top-0 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-gray-600">Fixed Deposit Lookup</h2>
+                  <span className="text-xs text-gray-400">
+                    {total} {total === 1 ? 'FD' : 'FDs'} found
+                  </span>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
-                    <h3 className="font-semibold text-gray-800 mb-4">Interest Payment Details</h3>
-                    <div className="space-y-3 text-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Payment Mode:</span>
-                        <span>{selectedFD.interestPayment}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Last Paid:</span>
-                        <span>{selectedFD.lastInterestPaid}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Next Due:</span>
-                        <span className="text-orange-600 font-medium">{selectedFD.nextInterestDue}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <span className="font-medium">Quarterly Amount:</span>
-                        <span>LKR 11,875.00</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-gray-800">Quick Actions</h3>
-                    <div className="grid grid-cols-1 gap-3">
-                      <Button 
-                        type="button" 
-                        onClick={payInterest}
-                        className="bg-green-600 text-white hover:bg-green-700"
-                      >
-                        Pay Due Interest
-                      </Button>
-                      <Button 
-                        type="button" 
-                        onClick={renewFD}
-                        className="bg-blue-600 text-white hover:bg-blue-700"
-                      >
-                        Renew FD
-                      </Button>
-                      <Button 
-                        type="button" 
-                        variant="secondary"
-                        onClick={() => window.print()}
-                      >
-                        Print Statement
-                      </Button>
-                      <Button 
-                        type="button" 
-                        variant="danger"
-                        onClick={closeFD}
-                      >
-                        Close FD (Premature)
-                      </Button>
-                    </div>
-                  </div>
+                {/* Filter Buttons */}
+                <div className="flex flex-wrap gap-2">
+                  {filterTypes.map((type) => (
+                    <Button
+                      key={type}
+                      variant="filter"
+                      active={fdFilterType === type}
+                      onClick={() => setFdFilterType(type)}
+                    >
+                      {type}
+                    </Button>
+                  ))}
                 </div>
+
+                {/* Search Bar */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select
+                    value={fdSearchField}
+                    onChange={(e) => setFdSearchField(e.target.value as FDSearchField)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="fdNumber">FD Number</option>
+                    <option value="accountNumber">Account Number</option>
+                    <option value="customerName">Customer Name</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder={`Search by ${fdSearchField === 'fdNumber' ? 'FD Number' : fdSearchField === 'accountNumber' ? 'Account Number' : 'Customer Name'}`}
+                    value={fdSearchQuery}
+                    onChange={(e) => setFdSearchQuery(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Scrollable FDs List */}
+              <div className="flex-1 overflow-y-auto mt-4 pr-2">
+                {loading && (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    {error}
+                  </div>
+                )}
+
+                {!loading && !error && (
+                  <div className="space-y-4">
+                    {searchResults.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 text-sm">
+                        No fixed deposits found matching your criteria
+                      </div>
+                    ) : (
+                      searchResults.map((fd) => (
+                        <div
+                          key={fd.fd_id}
+                          className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="text-sm font-medium text-gray-900">
+                                  {fd.fd_id}
+                                </h4>
+                                <span
+                                  className={`px-2 py-0.5 text-xs rounded-full ${
+                                    fd.status === 'ACTIVE'
+                                      ? 'bg-green-100 text-green-800'
+                                      : fd.status === 'MATURED'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}
+                                >
+                                  {fd.status}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                                <p>
+                                  <span className="font-medium">Customer:</span> {fd.customer_name}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Account:</span> {fd.account_id}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Account Type:</span> {fd.account_type_name}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Principal:</span>{' '}
+                                  <span className="font-semibold text-emerald-600">
+                                    {formatCurrency(fd.amount)}
+                                  </span>
+                                </p>
+                                <p>
+                                  <span className="font-medium">Interest Rate:</span> {fd.interest_rate}% p.a.
+                                </p>
+                                <p>
+                                  <span className="font-medium">Term:</span> {getTermDisplay(fd.fd_type)}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Start Date:</span> {formatDate(fd.start_date)}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Maturity Date:</span> {formatDate(fd.maturity_date)}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Days to Maturity:</span> {fd.days_to_maturity}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Current Value:</span>{' '}
+                                  <span className="font-semibold text-emerald-600">
+                                    {formatCurrency(fd.current_value)}
+                                  </span>
+                                </p>
+                              </div>
+
+                              {/* Interest Details */}
+                              <div className="mt-3 text-xs text-gray-700">
+                                <p className="font-medium mb-1">Interest Details:</p>
+                                <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
+                                  <div className="p-2 bg-gray-50 hover:bg-gray-100 transition">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-gray-600">
+                                      <p>
+                                        <span className="font-medium">Monthly Interest:</span>{' '}
+                                        {formatCurrency(fd.monthly_interest)}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Last Paid:</span> {formatDate(fd.last_interest_paid)}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Last Amount:</span>{' '}
+                                        {fd.last_interest_amount ? formatCurrency(fd.last_interest_amount) : 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2 mt-2 sm:mt-0">
+                              {fd.status === 'ACTIVE' && (
+                                <>
+                                  <Button 
+                                    type="button" 
+                                    variant="primary"
+                                    className="whitespace-nowrap"
+                                    onClick={() => payInterest(fd.fd_id)}
+                                    disabled={loading}
+                                  >
+                                    Pay Interest
+                                  </Button>
+                                  <Button 
+                                    type="button" 
+                                    variant="primary"
+                                    className="whitespace-nowrap"
+                                    onClick={() => renewFD(fd.fd_id)}
+                                    disabled={loading}
+                                  >
+                                    Renew
+                                  </Button>
+                                  <Button 
+                                    type="button" 
+                                    variant="danger"
+                                    className="whitespace-nowrap bg-red-100"
+                                    onClick={() => closeFD(fd.fd_id)}
+                                    disabled={loading}
+                                  >
+                                    Close
+                                  </Button>
+                                </>
+                              )}
+                              <Button 
+                                type="button" 
+                                variant="secondary"
+                                className="whitespace-nowrap"
+                                onClick={() => window.print()}
+                              >
+                                Print
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -297,31 +653,68 @@ export default function FixedDepositPage() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Fixed Deposit</h2>
+                <p className="text-sm text-gray-600">
+                  Note: Only Adult, Teen, Senior, and Joint accounts can open Fixed Deposits. 
+                  One FD per account is allowed.
+                </p>
               </div>
 
               <form onSubmit={handleCreateSubmit}>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-6">
-                    <TextInput
-                      label="Account Number"
-                      name="accountNumber"
-                      value={createForm.accountNumber}
-                      onChange={handleCreateChange}
-                      required
-                      placeholder="Enter customer account number"
-                    />
+                    <div>
+                      <TextInput
+                        label="Account Number"
+                        name="accountNumber"
+                        value={createForm.accountNumber}
+                        onChange={handleCreateChange}
+                        required
+                        placeholder="Enter savings account number"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleCheckAccount}
+                        variant="secondary"
+                        disabled={checkingAccount || !createForm.accountNumber}
+                        className="mt-2"
+                      >
+                        {checkingAccount ? 'Checking...' : 'Check Account'}
+                      </Button>
 
-                    <TextInput
-                      label="Deposit Amount (LKR)"
-                      name="depositAmount"
-                      value={createForm.depositAmount}
-                      onChange={handleCreateChange}
-                      required
-                      placeholder="Minimum LKR 10,000"
-                    />
+                      {accountHolders.length > 0 && (
+                        <div className="mt-4 p-4 bg-emerald-50 rounded-lg">
+                          <h4 className="font-semibold text-gray-800 mb-2">Account Holder{accountHolders.length > 1 ? 's' : ''}</h4>
+                          {accountHolders.map((holder, index) => (
+                            <p key={holder.customer_id} className="text-sm text-gray-700">
+                              {accountHolders.length > 1 && `${index + 1}. `}
+                              <strong>{holder.first_name} {holder.last_name}</strong> (NIC: {holder.nic_number})
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <div>
-                      <label className="block mb-2 text-gray-700 font-medium">Deposit Term</label>
+                      <label className="block mb-2 text-gray-700 font-medium">
+                        Deposit Amount (LKR) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="amount"
+                        value={createForm.amount}
+                        onChange={handleCreateChange}
+                        required
+                        min="0"
+                        step="0.01"
+                        placeholder="Enter deposit amount"
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-2 text-gray-700 font-medium">
+                        Deposit Term <span className="text-red-500">*</span>
+                      </label>
                       <select
                         name="term"
                         value={createForm.term}
@@ -330,99 +723,53 @@ export default function FixedDepositPage() {
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         <option value="">Select Term</option>
-                        <option value="0.5 Years">6 Months (8.5% p.a.)</option>
-                        <option value="1 Years">1 Year (9.0% p.a.)</option>
-                        <option value="2 Years">2 Years (9.5% p.a.)</option>
-                        <option value="3 Years">3 Years (10.0% p.a.)</option>
-                        <option value="5 Years">5 Years (10.5% p.a.)</option>
-                      </select>
-                    </div>
-
-                    <TextInput
-                      label="Interest Rate (% p.a.)"
-                      name="interestRate"
-                      value={createForm.interestRate}
-                      onChange={handleCreateChange}
-                      required
-                      placeholder="Auto-filled based on term"
-                    />
-
-                    <div>
-                      <label className="block mb-2 text-gray-700 font-medium">Interest Payment</label>
-                      <select
-                        name="interestPayment"
-                        value={createForm.interestPayment}
-                        onChange={handleCreateChange}
-                        required
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="maturity">At Maturity (Compound)</option>
-                        <option value="monthly">Monthly Payout</option>
-                        <option value="quarterly">Quarterly Payout</option>
-                        <option value="yearly">Yearly Payout</option>
+                        <option value="0.5">6 Months (13% p.a.)</option>
+                        <option value="1">1 Year (14% p.a.)</option>
+                        <option value="3">3 Years (15% p.a.)</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <TextInput
-                          label="FD Number"
-                          name="receiptNumber"
-                          value={createForm.receiptNumber}
-                          onChange={handleCreateChange}
-                          required
-                          placeholder="Generate FD number"
-                        />
-                        <Button
-                          type="button"
-                          onClick={generateFDNumber}
-                          variant="secondary"
-                          size="sm"
-                          className="mt-6"
-                        >
-                          Generate
-                        </Button>
+                    {/* FD Terms Information */}
+                    <div className="bg-green-50 p-6 rounded-lg border border-green-200">
+                      <h4 className="font-semibold text-gray-800 mb-3">Fixed Deposit Terms</h4>
+                      <div className="text-sm text-gray-700 space-y-2">
+                        <div><strong>6 Months:</strong> 13% per annum</div>
+                        <div><strong>1 Year:</strong> 14% per annum</div>
+                        <div><strong>3 Years:</strong> 15% per annum</div>
+                        <div className="pt-2 border-t border-green-300 mt-3">
+                          <strong>Interest Payment:</strong> Monthly, credited to linked savings account
+                        </div>
+                        <div><strong>Calculation Cycle:</strong> 30-day month</div>
+                        <div><strong>Eligible Accounts:</strong> Adult, Teen, Senior, Joint</div>
+                        <div className="text-red-600"><strong>Limit:</strong> One FD per account</div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block mb-2 text-gray-700 font-medium">Nominee Details</label>
-                      <textarea
-                        name="nomineeDetails"
-                        value={createForm.nomineeDetails}
-                        onChange={handleCreateChange}
-                        rows={3}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        placeholder="Nominee name, relationship, contact details..."
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block mb-2 text-gray-700 font-medium">Special Instructions</label>
-                      <textarea
-                        name="specialInstructions"
-                        value={createForm.specialInstructions}
-                        onChange={handleCreateChange}
-                        rows={3}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        placeholder="Any special instructions for this FD..."
-                      />
-                    </div>
-
                     {/* Maturity Calculation */}
-                    {createForm.depositAmount && createForm.interestRate && createForm.term && (
-                      <div className="bg-green-50 p-4 rounded-lg">
+                    {createForm.amount && createForm.term && (
+                      <div className="bg-green-50 p-6 rounded-lg border border-green-200">
                         <h4 className="font-semibold text-gray-800 mb-3">Maturity Calculation</h4>
                         <div className="text-sm text-gray-700 space-y-2">
-                          <div><strong>Principal Amount:</strong> LKR {parseFloat(createForm.depositAmount).toLocaleString()}</div>
-                          <div><strong>Interest Rate:</strong> {createForm.interestRate}% per annum</div>
-                          <div><strong>Term:</strong> {createForm.term}</div>
-                          <div className="pt-2 border-t">
-                            <strong>Maturity Amount:</strong> LKR {calculateMaturityAmount().toLocaleString()}
+                          <div>
+                            <strong>Principal Amount:</strong> {formatCurrency(createForm.amount)}
                           </div>
-                          <div><strong>Total Interest:</strong> LKR {(calculateMaturityAmount() - parseFloat(createForm.depositAmount || '0')).toLocaleString()}</div>
+                          <div>
+                            <strong>Interest Rate:</strong> {getInterestRateDisplay(createForm.term)}% per annum
+                          </div>
+                          <div>
+                            <strong>Term:</strong> {createForm.term === '0.5' ? '6 Months' : `${createForm.term} Year${createForm.term === '1' ? '' : 's'}`}
+                          </div>
+                          <div>
+                            <strong>Monthly Interest:</strong> {formatCurrency(calculateMonthlyInterest())}
+                          </div>
+                          <div className="pt-2 border-t border-green-300 mt-3">
+                            <strong>Estimated Maturity Amount:</strong> {formatCurrency(calculateMaturityAmount())}
+                          </div>
+                          <div>
+                            <strong>Total Interest:</strong> {formatCurrency(calculateMaturityAmount() - parseFloat(createForm.amount || '0'))}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -431,15 +778,27 @@ export default function FixedDepositPage() {
 
                 <div className="flex justify-end mt-8 pt-6 border-t border-gray-300">
                   <div className="flex space-x-4">
-                    <Button type="button" variant="secondary">
-                      Save as Draft
+                    <Button 
+                      type="button" 
+                      variant="secondary"
+                      onClick={() => {
+                        setCreateForm({
+                          accountNumber: '',
+                          amount: '',
+                          term: ''
+                        });
+                        setAccountHolders([]);
+                        setError(null);
+                      }}
+                    >
+                      Clear Form
                     </Button>
                     <Button
                       type="submit"
-                      disabled={!createForm.accountNumber || !createForm.depositAmount || !createForm.term || !createForm.receiptNumber}
-                      className={`bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 ${(!createForm.accountNumber || !createForm.depositAmount || !createForm.term || !createForm.receiptNumber) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      disabled={!createForm.accountNumber || !createForm.amount || !createForm.term || loading}
+                      className={`bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 ${(!createForm.accountNumber || !createForm.amount || !createForm.term || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      Create Fixed Deposit
+                      {loading ? 'Creating...' : 'Create Fixed Deposit'}
                     </Button>
                   </div>
                 </div>

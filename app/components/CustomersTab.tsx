@@ -5,7 +5,6 @@ type CustomerFilterType =
   | 'All'
   | 'Adult Accounts'
   | 'Joint Accounts'
-  | 'Fixed Deposits'
   | 'Children Accounts'
   | 'Teen Accounts'
   | 'Senior Accounts'
@@ -22,6 +21,12 @@ interface CustomersTabProps {
   setCustomerSearchQuery: (query: string) => void;
 }
 
+interface FDInfo {
+  fd_id: string;
+  amount: number;
+  fd_type: string;
+}
+
 interface AccountData {
   account_id: string;
   current_balance: number;
@@ -32,6 +37,7 @@ interface AccountData {
   last_transaction_amount: number | null;
   last_transaction_date: string | null;
   branch_name: string;
+  fd?: FDInfo;
 }
 
 interface CustomerData {
@@ -64,7 +70,6 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
     'All',
     'Adult Accounts',
     'Joint Accounts',
-    'Fixed Deposits',
     'Children Accounts',
     'Teen Accounts',
     'Senior Accounts',
@@ -101,7 +106,51 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
       }
 
       const data = await response.json();
-      setCustomers(data.customers || []);
+
+      // Process customers to add FD info
+      const processedCustomers = await Promise.all(
+        (data.customers || []).map(async (customer: CustomerData) => {
+          const processedAccounts = await Promise.all(
+            customer.accounts.map(async (acc: AccountData) => {
+              try {
+                const fdResponse = await fetch(
+                  `${apiUrl}/api/fixed-deposit/search?accountNumber=${acc.account_id}`,
+                  {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                  }
+                );
+
+                if (!fdResponse.ok) return acc;
+
+                const fdData = await fdResponse.json();
+
+                if (fdData.length > 0) {
+                  const fd = fdData[0];
+                  return {
+                    ...acc,
+                    fd: {
+                      fd_id: fd.fd_id,
+                      amount: parseFloat(fd.amount),
+                      fd_type: fd.fd_type,
+                    },
+                  };
+                }
+
+                return acc;
+              } catch (e) {
+                console.error(`Error fetching FD for account ${acc.account_id}:`, e);
+                return acc;
+              }
+            })
+          );
+
+          return { ...customer, accounts: processedAccounts };
+        })
+      );
+
+      setCustomers(processedCustomers);
       setTotal(data.total || 0);
     } catch (err) {
       console.error('Error fetching customers:', err);
@@ -144,6 +193,15 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
       minute: '2-digit',
       hour12: true,
     });
+  };
+
+  const getTermDisplay = (fdType: string) => {
+    switch (fdType) {
+      case '6_MONTHS': return '6 Months';
+      case '1_YEAR': return '1 Year';
+      case '3_YEARS': return '3 Years';
+      default: return fdType;
+    }
   };
 
   return (
@@ -257,11 +315,11 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
                       {/* Accounts List */}
                       <div className="mt-3 text-xs text-gray-700">
                         <p className="font-medium mb-1">Accounts:</p>
-                        <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
+                        <div className="rounded-lg divide-y divide-gray-100 space-y-1">
                           {customer.accounts.map((acc) => (
                             <div
                               key={acc.account_id}
-                              className="p-2 bg-gray-50 hover:bg-gray-100 transition"
+                              className="rounded-lg p-2 bg-gray-50 hover:bg-gray-100 transition"
                             >
                               <div className="flex flex-wrap justify-between items-center">
                                 <p>
@@ -288,6 +346,22 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
                                 <p>
                                   <span className="font-medium">Branch:</span> {acc.branch_name}
                                 </p>
+                                {acc.fd && (
+                                  <>
+                                    <p>
+                                      <span className="font-medium">Fixed Deposit:</span>{' '}
+                                      {acc.fd.fd_id}
+                                    </p>
+                                    <p>
+                                      <span className="font-medium">Fixed Amount:</span>{' '}
+                                      {formatCurrency(acc.fd.amount)}
+                                    </p>
+                                    <p>
+                                      <span className="font-medium">Term:</span>{' '}
+                                      {getTermDisplay(acc.fd.fd_type)}
+                                    </p>
+                                  </>
+                                )}
                                 {acc.last_transaction_type && (
                                   <>
                                     <p>
