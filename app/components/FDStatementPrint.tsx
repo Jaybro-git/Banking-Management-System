@@ -13,6 +13,9 @@ const FDStatementPrint: React.FC<FDStatementPrintProps> = ({ fd, history, format
 
   return (
     <div className="p-8 bg-white font-sans text-gray-900">
+      <div className="text-right mr-4 mt-4 text-2xl font-bold text-green-800 ml-4">
+            B<span className="text-2xl font-normal">-TRUST</span>
+      </div>
       <h1 className="text-2xl font-bold mb-4">Fixed Deposit Statement</h1>
       
       <div className="mb-6 space-y-1 text-sm">
