@@ -5,9 +5,9 @@ const authenticateToken = require('../middleware/auth');
 
 const router = express.Router();
 
-// Generate unique transaction ID: TXN[YYMMDD][00001]
+// Generate unique transaction ID: TXN-[00001]
 async function generateTransactionId(client = pool) {
-  const prefix = `TXN`;
+  const prefix = 'TXN-';
 
   const result = await client.query(
     `SELECT transaction_id FROM transaction 
@@ -19,20 +19,32 @@ async function generateTransactionId(client = pool) {
   let sequence = 1;
   if (result.rows.length > 0) {
     const lastId = result.rows[0].transaction_id;
-    const lastSeq = parseInt(lastId.split('-').pop());
+    const lastSeq = parseInt(lastId.slice(prefix.length));
     sequence = lastSeq + 1;
   }
 
-  return `${prefix}-${sequence.toString().padStart(5, '0')}`;
+  return `${prefix}${sequence.toString().padStart(5, '0')}`;
 }
 
 // Generate reference number: REF-[8 random alphanumeric]
-function generateReferenceNumber() {
+async function generateReferenceNumber(client = pool) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let ref = 'REF-';
-  for (let i = 0; i < 8; i++) {
-    ref += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+
+  let ref;
+  let exists;
+  do {
+    ref = 'REF-';
+    for (let i = 0; i < 8; i++) {
+      ref += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const result = await client.query(
+      'SELECT reference_number FROM transaction WHERE reference_number = $1',
+      [ref]
+    );
+    exists = result.rows.length > 0;
+  } while (exists);
+
   return ref;
 }
 
@@ -40,7 +52,7 @@ function generateReferenceNumber() {
 async function recordInitialDeposit(client, accountId, amount, description = 'Initial deposit') {
   try {
     const transactionId = await generateTransactionId(client);
-    const referenceNumber = generateReferenceNumber();
+    const referenceNumber = await generateReferenceNumber(client);
 
     await client.query(
       `INSERT INTO transaction (
@@ -49,6 +61,12 @@ async function recordInitialDeposit(client, accountId, amount, description = 'In
       ) VALUES ($1, $2, 'INITIAL', $3, 0, CURRENT_TIMESTAMP, $4, 'SUCCESS', $5)
       RETURNING transaction_id, reference_number`,
       [transactionId, accountId, amount, description, referenceNumber]
+    );
+
+    // Update account balance (assuming initial balance is 0)
+    await client.query(
+      'UPDATE account SET current_balance = current_balance + $1 WHERE account_id = $2',
+      [amount, accountId]
     );
 
     return { transactionId, referenceNumber };
@@ -73,7 +91,7 @@ async function recordDeposit(client, accountId, amount, description = 'Deposit')
 
     const balanceBefore = parseFloat(balanceResult.rows[0].current_balance);
     const transactionId = await generateTransactionId(client);
-    const referenceNumber = generateReferenceNumber();
+    const referenceNumber = await generateReferenceNumber(client);
 
     // Record transaction
     await client.query(
@@ -101,7 +119,7 @@ async function recordDeposit(client, accountId, amount, description = 'Deposit')
 async function recordFDInterest(client, accountId, amount, description = 'FD Interest', balanceBefore) {
   try {
     const transactionId = await generateTransactionId(client);
-    const referenceNumber = generateReferenceNumber();
+    const referenceNumber = await generateReferenceNumber(client);
 
     await client.query(
       `INSERT INTO transaction (
@@ -109,6 +127,12 @@ async function recordFDInterest(client, accountId, amount, description = 'FD Int
         balance_before, time_date_stamp, description, status, reference_number
       ) VALUES ($1, $2, 'FD_INTEREST', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
       [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
+    );
+
+    // Update account balance
+    await client.query(
+      'UPDATE account SET current_balance = current_balance + $1 WHERE account_id = $2',
+      [amount, accountId]
     );
 
     return { transactionId, referenceNumber };
