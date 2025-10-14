@@ -44,6 +44,8 @@ interface FDDetails {
   account_type_name: string;
   last_interest_paid: string | null;
   last_interest_amount: string | null;
+  total_interests_paid: number;
+  total_interest_paid_amount: string;
 }
 
 interface AccountHolder {
@@ -66,6 +68,10 @@ export default function FixedDepositPage() {
   const [fdSearchField, setFdSearchField] = useState<FDSearchField>('fdNumber');
   const [fdSearchQuery, setFdSearchQuery] = useState('');
   const [total, setTotal] = useState(0);
+
+  const [expandedFDs, setExpandedFDs] = useState<{ [key: string]: boolean }>({});
+  const [fdHistory, setFdHistory] = useState<{ [key: string]: any[] }>({});
+  const [loadingHistory, setLoadingHistory] = useState<{ [key: string]: boolean }>({});
 
   const [createForm, setCreateForm] = useState({
     accountNumber: '',
@@ -253,35 +259,6 @@ export default function FixedDepositPage() {
     }
   };
 
-  const payInterest = async (fdId: string) => {
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/pay-interest/${fdId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to pay interest');
-      }
-
-      const data = await response.json();
-      alert(`✓ Interest payment successful!\n\nAmount: LKR ${parseFloat(data.transaction.amount).toFixed(2)}\nReference: ${data.transaction.reference_number}\nFD: ${fdId}`);
-      
-      // Refresh list
-      fetchFDs();
-    } catch (err: any) {
-      alert(`✗ Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const renewFD = async (fdId: string) => {
     const term = prompt('Enter new term (0.5 for 6 months, 1 for 1 year, 3 for 3 years):');
     if (!term) return;
@@ -440,6 +417,35 @@ export default function FixedDepositPage() {
     }
   };
 
+  // Toggle FD history display
+  const toggleFDHistory = async (fdId: string) => {
+    setExpandedFDs(prev => ({ ...prev, [fdId]: !prev[fdId] }));
+
+    if (!fdHistory[fdId]) {
+      setLoadingHistory(prev => ({ ...prev, [fdId]: true }));
+      try {
+        const response = await fetch(`${API_BASE_URL}/fixed-deposit/${fdId}/interest-history`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setFdHistory(prev => ({ ...prev, [fdId]: data }));
+      } catch (err: any) {
+        console.error('Error fetching FD history:', err);
+        setError(err.message || 'Failed to fetch interest history');
+      } finally {
+        setLoadingHistory(prev => ({ ...prev, [fdId]: false }));
+      }
+    }
+  };
+
   // New: Handle print button click
   const handlePrint = async (fd: FDDetails) => {
     const history = await fetchInterestHistory(fd.fd_id);
@@ -563,7 +569,7 @@ export default function FixedDepositPage() {
                                         ? 'bg-green-100 text-green-800'
                                         : fd.status === 'MATURED'
                                         ? 'bg-blue-100 text-blue-800'
-                                        : 'bg-gray-100 text-gray-800'
+                                        : 'bg-red-100 text-red-800'
                                     }`}
                                   >
                                     {fd.status}
@@ -604,7 +610,16 @@ export default function FixedDepositPage() {
                                   <p>
                                     <span className="font-medium">Current Value:</span>{' '}
                                     <span className="font-semibold text-emerald-600">
-                                      {formatCurrency(fd.current_value)}
+                                      {formatCurrency(parseFloat(fd.amount) + parseFloat(fd.total_interest_paid_amount))}
+                                    </span>
+                                  </p>
+                                  <p>
+                                    <span className="font-medium">Monthly Interest:</span> {formatCurrency(fd.monthly_interest)}
+                                  </p>
+                                  <p>
+                                    <span className="font-medium">Total Interest Paid:</span>{' '}
+                                    <span className="font-semibold text-emerald-600">
+                                      {formatCurrency(fd.total_interest_paid_amount)}
                                     </span>
                                   </p>
                                 </div>
@@ -613,11 +628,13 @@ export default function FixedDepositPage() {
                                 <div className="mt-3 text-xs text-gray-700">
                                   <p className="font-medium mb-1">Interest Details:</p>
                                   <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
-                                    <div className="p-2 bg-gray-50 hover:bg-gray-100 transition">
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-gray-600">
+                                    <div 
+                                      className="p-2 bg-gray-50 hover:bg-gray-100 transition cursor-pointer flex justify-between items-center"
+                                      onClick={() => toggleFDHistory(fd.fd_id)}
+                                    >
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-gray-600 flex-1">
                                         <p>
-                                          <span className="font-medium">Monthly Interest:</span>{' '}
-                                          {formatCurrency(fd.monthly_interest)}
+                                          <span className="font-medium">Monthly Interests Paid:</span> {fd.total_interests_paid}
                                         </p>
                                         <p>
                                           <span className="font-medium">Last Paid:</span> {formatDate(fd.last_interest_paid)}
@@ -627,7 +644,29 @@ export default function FixedDepositPage() {
                                           {fd.last_interest_amount ? formatCurrency(fd.last_interest_amount) : 'N/A'}
                                         </p>
                                       </div>
+                                      <div className="text-gray-500 ml-2">
+                                        {expandedFDs[fd.fd_id] ? '▲' : '▼'}
+                                      </div>
                                     </div>
+                                    {expandedFDs[fd.fd_id] && (
+                                      <div className="p-2 bg-gray-50">
+                                        {loadingHistory[fd.fd_id] ? (
+                                          <p className="text-sm text-gray-500 text-center">Loading history...</p>
+                                        ) : fdHistory[fd.fd_id] && fdHistory[fd.fd_id].length > 0 ? (
+                                          <div className="grid gap-x-4 gap-y-1 text-[11px] text-gray-600 flex-1">
+                                            <h5 className="font-semibold text-gray-800 mb-2 text-sm">Interest Payment History</h5>
+                                            {fdHistory[fd.fd_id].map((hist: any, index: number) => (
+                                              <div key={index} className="flex justify-between items-center text-xs text-gray-600 border-b border-gray-100 pb-1">
+                                                <span>{formatDate(hist.time_date_stamp)}</span>
+                                                <span className="font-medium">{formatCurrency(hist.amount)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-gray-500 text-center italic">No interest payments yet</p>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -635,15 +674,6 @@ export default function FixedDepositPage() {
                               <div className="flex flex-col gap-2 mt-2 sm:mt-0">
                                 {fd.status === 'ACTIVE' && (
                                   <>
-                                    <Button 
-                                      type="button" 
-                                      variant="primary"
-                                      className="whitespace-nowrap"
-                                      onClick={() => payInterest(fd.fd_id)}
-                                      disabled={loading}
-                                    >
-                                      Pay Interest
-                                    </Button>
                                     <Button 
                                       type="button" 
                                       variant="primary"

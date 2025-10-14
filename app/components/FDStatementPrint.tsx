@@ -30,8 +30,9 @@ const FDStatementPrint: React.FC<FDStatementPrintProps> = ({ fd, history, format
         <p><strong>Start Date:</strong> {formatDate(fd.start_date)}</p>
         <p><strong>Maturity Date:</strong> {formatDate(fd.maturity_date)}</p>
         <p><strong>Status:</strong> {fd.status}</p>
-        <p><strong>Current Value:</strong> {formatCurrency(fd.current_value)}</p>
         <p><strong>Monthly Interest:</strong> {formatCurrency(fd.monthly_interest)}</p>
+        <p><strong>Total interest paid:</strong> {formatCurrency(fd.total_interest_paid_amount)}</p>
+        <p><strong>Current Value:</strong> {formatCurrency(fd.current_value)}</p>
       </div>
 
       <h2 className="text-xl font-bold mb-2">Interest Payment History</h2>

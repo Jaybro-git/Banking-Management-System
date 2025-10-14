@@ -206,12 +206,6 @@ router.get('/search', authenticateToken, async (req, res) => {
       const maturityDate = new Date(fd.maturity_date);
       const daysToMaturity = Math.ceil((maturityDate - today) / (1000 * 60 * 60 * 24));
       
-      // Calculate current value (principal + accumulated interest)
-      const monthsElapsed = Math.floor((today - new Date(fd.start_date)) / (1000 * 60 * 60 * 24 * 30));
-      const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
-      const accumulatedInterest = monthlyInterest * monthsElapsed;
-      const currentValue = parseFloat(fd.amount) + accumulatedInterest;
-
       // Get last interest payment for THIS specific FD
       const lastInterestResult = await pool.query(
         `SELECT time_date_stamp, amount
@@ -224,14 +218,39 @@ router.get('/search', authenticateToken, async (req, res) => {
         [fd.account_id, `%${fd.fd_id}%`]
       );
 
+      // Get total count of interest payments for THIS specific FD
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as total_interests_paid
+        FROM transaction
+        WHERE account_id = $1 
+        AND transaction_type = 'FD_INTEREST'
+        AND description LIKE $2`,
+        [fd.account_id, `%${fd.fd_id}%`]
+      );
+
+      // NEW: Get total amount of interest payments for THIS specific FD
+      const sumResult = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total_interest_paid_amount
+        FROM transaction
+        WHERE account_id = $1 
+        AND transaction_type = 'FD_INTEREST'
+        AND description LIKE $2`,
+        [fd.account_id, `%${fd.fd_id}%`]
+      );
+
+      const totalInterestPaid = parseFloat(sumResult.rows[0].total_interest_paid_amount);
+      const currentValue = parseFloat(fd.amount) + totalInterestPaid;
+
       return {
         ...fd,
         days_to_maturity: daysToMaturity > 0 ? daysToMaturity : 0,
         current_value: currentValue.toFixed(2),
-        monthly_interest: monthlyInterest.toFixed(2),
+        monthly_interest: calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate)).toFixed(2),
         customer_name: `${fd.first_name} ${fd.last_name}`,
         last_interest_paid: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].time_date_stamp : null,
-        last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null
+        last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null,
+        total_interests_paid: parseInt(countResult.rows[0].total_interests_paid),
+        total_interest_paid_amount: sumResult.rows[0].total_interest_paid_amount.toString()
       };
     }));
 
@@ -286,12 +305,6 @@ router.get('/:fdId', authenticateToken, async (req, res) => {
     const maturityDate = new Date(fd.maturity_date);
     const daysToMaturity = Math.ceil((maturityDate - today) / (1000 * 60 * 60 * 24));
     
-    // Calculate current value
-    const monthsElapsed = Math.floor((today - new Date(fd.start_date)) / (1000 * 60 * 60 * 24 * 30));
-    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
-    const accumulatedInterest = monthlyInterest * monthsElapsed;
-    const currentValue = parseFloat(fd.amount) + accumulatedInterest;
-
     // Get last interest payment for THIS specific FD
     const lastInterestResult = await pool.query(
       `SELECT time_date_stamp, amount
@@ -304,14 +317,39 @@ router.get('/:fdId', authenticateToken, async (req, res) => {
       [fd.account_id, `%${fdId}%`]
     );
 
+    // Get total count of interest payments for THIS specific FD
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total_interests_paid
+      FROM transaction
+      WHERE account_id = $1 
+      AND transaction_type = 'FD_INTEREST'
+      AND description LIKE $2`,
+      [fd.account_id, `%${fdId}%`]
+    );
+
+    // NEW: Get total amount of interest payments for THIS specific FD
+    const sumResult = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total_interest_paid_amount
+      FROM transaction
+      WHERE account_id = $1 
+      AND transaction_type = 'FD_INTEREST'
+      AND description LIKE $2`,
+      [fd.account_id, `%${fdId}%`]
+    );
+
+    const totalInterestPaid = parseFloat(sumResult.rows[0].total_interest_paid_amount);
+    const currentValue = parseFloat(fd.amount) + totalInterestPaid;
+
     const fdWithDetails = {
       ...fd,
       days_to_maturity: daysToMaturity > 0 ? daysToMaturity : 0,
       current_value: currentValue.toFixed(2),
-      monthly_interest: monthlyInterest.toFixed(2),
+      monthly_interest: calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate)).toFixed(2),
       customer_name: customerNames,
       last_interest_paid: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].time_date_stamp : null,
-      last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null
+      last_interest_amount: lastInterestResult.rows.length > 0 ? lastInterestResult.rows[0].amount : null,
+      total_interests_paid: parseInt(countResult.rows[0].total_interests_paid),
+      total_interest_paid_amount: sumResult.rows[0].total_interest_paid_amount.toString()
     };
 
     res.json(fdWithDetails);
@@ -423,7 +461,7 @@ router.post('/create', authenticateToken, async (req, res) => {
 
     // Record transaction for FD creation
     const transactionId = await generateTransactionId(client);
-    const referenceNumber = generateReferenceNumber();
+    const referenceNumber = await generateReferenceNumber(client);
 
     await client.query(
       `INSERT INTO transaction (
@@ -458,97 +496,6 @@ router.post('/create', authenticateToken, async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error creating FD:', err);
     res.status(400).json({ error: err.message || 'Failed to create fixed deposit' });
-  } finally {
-    client.release();
-  }
-});
-
-// Pay FD Interest
-router.post('/pay-interest/:fdId', authenticateToken, async (req, res) => {
-  const { fdId } = req.params;
-
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    // Get FD details
-    const fdResult = await client.query(
-      `SELECT fd.*, a.current_balance
-       FROM fixed_deposit fd
-       JOIN account a ON fd.account_id = a.account_id
-       WHERE fd.fd_id = $1 AND fd.status = 'ACTIVE'`,
-      [fdId]
-    );
-
-    if (fdResult.rows.length === 0) {
-      throw new Error('Active Fixed Deposit not found');
-    }
-
-    const fd = fdResult.rows[0];
-
-    // Calculate monthly interest
-    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
-
-    // Check last interest payment to ensure 30 days have passed
-    const lastPaymentResult = await client.query(
-      `SELECT time_date_stamp
-       FROM transaction
-       WHERE account_id = $1 
-       AND transaction_type = 'FD_INTEREST'
-       AND description LIKE $2
-       ORDER BY time_date_stamp DESC
-       LIMIT 1`,
-      [fd.account_id, `%${fdId}%`]
-    );
-
-    if (lastPaymentResult.rows.length > 0) {
-      const lastPayment = new Date(lastPaymentResult.rows[0].time_date_stamp);
-      const daysSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60 * 60 * 24));
-      
-      if (daysSinceLastPayment < 30) {
-        throw new Error(`Interest can only be paid after 30 days. Days since last payment: ${daysSinceLastPayment}`);
-      }
-
-      // const minutesSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60));
-      
-      // if (minutesSinceLastPayment < 1) {
-      //   throw new Error(`Interest can only be paid after 1 minute. Minutes since last payment: ${minutesSinceLastPayment}`);
-      // }
-    }
-
-    // Record FD interest transaction
-    const { transactionId, referenceNumber } = await recordFDInterest(
-      client,
-      fd.account_id,
-      monthlyInterest,
-      `Monthly FD Interest - ${fdId}`,
-      parseFloat(fd.current_balance)
-    );
-
-    // Update account balance
-    await client.query(
-      `UPDATE account SET current_balance = current_balance + $1
-       WHERE account_id = $2`,
-      [monthlyInterest, fd.account_id]
-    );
-
-    await client.query('COMMIT');
-
-    res.json({
-      message: 'Interest paid successfully',
-      transaction: {
-        transaction_id: transactionId,
-        reference_number: referenceNumber,
-        amount: monthlyInterest.toFixed(2),
-        account_id: fd.account_id,
-        fd_id: fdId
-      }
-    });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Error paying FD interest:', err);
-    res.status(400).json({ error: err.message || 'Failed to pay interest' });
   } finally {
     client.release();
   }
@@ -700,7 +647,7 @@ router.post('/close/:fdId', authenticateToken, async (req, res) => {
 
     // Record principal return transaction
     const transactionId1 = await generateTransactionId(client);
-    const referenceNumber1 = generateReferenceNumber();
+    const referenceNumber1 = await generateReferenceNumber(client);
 
     await client.query(
       `INSERT INTO transaction (
@@ -826,23 +773,13 @@ async function payAllFDInterests() {
         [fd.account_id, `%${fd.fd_id}%`]
       );
 
-      let eligible = true;
-      if (lastPaymentResult.rows.length > 0) {
-        const lastPayment = new Date(lastPaymentResult.rows[0].time_date_stamp);
-        const daysSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60 * 60 * 24));
-        
-        if (daysSinceLastPayment < 30) {
-          eligible = false;
-        }
-
-        // const minutesSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60));
-        
-        // if (minutesSinceLastPayment < 1) {
-        //   eligible = false;
-        // }
-      }
-
-      if (eligible && monthlyInterest > 0) {
+      const lastPaymentDate = lastPaymentResult.rows.length > 0 
+        ? new Date(lastPaymentResult.rows[0].time_date_stamp) 
+        : new Date(fd.start_date);
+      
+      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) {
         // Record FD interest transaction
         const { transactionId, referenceNumber } = await recordFDInterest(
           client,
