@@ -2,8 +2,14 @@
 const express = require('express');
 const pool = require('../db/index');
 const authenticateToken = require('../middleware/auth');
+const cors = require('cors');
 
 const router = express.Router();
+
+router.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 // Generate unique transaction ID: TXN-[00001]
 async function generateTransactionId(client = pool) {
@@ -93,12 +99,13 @@ async function recordDeposit(client, accountId, amount, description = 'Deposit')
     const transactionId = await generateTransactionId(client);
     const referenceNumber = await generateReferenceNumber(client);
 
-    // Record transaction
-    await client.query(
+    // Record transaction and return the timestamp
+    const transactionResult = await client.query(
       `INSERT INTO transaction (
         transaction_id, account_id, transaction_type, amount,
         balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'DEPOSIT', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
+      ) VALUES ($1, $2, 'DEPOSIT', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)
+      RETURNING transaction_id, reference_number, time_date_stamp`,
       [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
     );
 
@@ -108,7 +115,15 @@ async function recordDeposit(client, accountId, amount, description = 'Deposit')
       [amount, accountId]
     );
 
-    return { transactionId, referenceNumber, balanceBefore, balanceAfter: balanceBefore + amount };
+    const insertedTransaction = transactionResult.rows[0];
+
+    return { 
+      transactionId: insertedTransaction.transaction_id, 
+      referenceNumber: insertedTransaction.reference_number,
+      time_date_stamp: insertedTransaction.time_date_stamp,
+      balanceBefore, 
+      balanceAfter: balanceBefore + amount 
+    };
   } catch (err) {
     console.error('Error recording deposit:', err);
     throw new Error('Failed to record deposit transaction');
@@ -191,6 +206,110 @@ router.get('/transaction/:transactionId', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error('Error fetching transaction:', err);
     res.status(500).json({ error: 'Failed to fetch transaction details' });
+  }
+});
+
+// Get account info for validation
+router.get('/account/:accountId/info', authenticateToken, async (req, res) => {
+  const { accountId } = req.params;
+
+  try {
+    const accountResult = await pool.query(
+      `SELECT a.current_balance, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [accountId]
+    );
+
+    if (accountResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    const account = accountResult.rows[0];
+
+    // Get all holders
+    const holdersResult = await pool.query(
+      `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1`,
+      [accountId]
+    );
+
+    const holders = holdersResult.rows.map(row => ({
+      customerName: `${row.first_name} ${row.last_name}`,
+      nic: row.nic_number,
+      phone: row.phone_number,
+      email: row.email
+    }));
+
+    res.json({
+      holders,
+      accountType: account.account_type_name,
+      currentBalance: account.current_balance.toString()
+    });
+  } catch (err) {
+    console.error('Error fetching account info:', err);
+    res.status(500).json({ error: 'Failed to fetch account info' });
+  }
+});
+
+// Process new deposit
+router.post('/deposit', authenticateToken, async (req, res) => {
+  const { accountId, amount, description = 'Deposit' } = req.body;
+
+  if (!accountId || !amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const result = await recordDeposit(client, accountId, parseFloat(amount), description);
+
+    // Fetch account info
+    const accountResult = await client.query(
+      `SELECT a.account_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [accountId]
+    );
+
+    if (accountResult.rows.length === 0) {
+      throw new Error('Account not found');
+    }
+
+    const account = accountResult.rows[0];
+
+    // Fetch holders
+    const holdersResult = await client.query(
+      `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1`,
+      [accountId]
+    );
+
+    const holders = holdersResult.rows;
+
+    await client.query('COMMIT');
+
+    res.json({
+      transaction: result,
+      accountInfo: { account, holders },
+      depositAmount: amount,
+      remarks: description
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error processing deposit:', err);
+    res.status(500).json({ error: 'Failed to process deposit' });
+  } finally {
+    client.release();
   }
 });
 

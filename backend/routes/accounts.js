@@ -202,12 +202,13 @@ router.post('/account/open', authenticateToken, async (req, res) => {
 
     const accountId = await generateAccountId(client, accountTypeId, branchId, req.user.employee_id);
 
+    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
         current_balance, status
-      ) VALUES ($1, $2, $3, $4, 'ACTIVE')`,
-      [accountId, branchId, accountTypeId, deposit]
+      ) VALUES ($1, $2, $3, 0, 'ACTIVE')`,
+      [accountId, branchId, accountTypeId]
     );
 
     await client.query(
@@ -260,8 +261,7 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
   const agentId = req.user.employee_id;
 
   if (!firstName || !lastName || !nicNumber || !dateOfBirth ||
-      !gender || !phoneNumber || !email || !address ||
-      !accountTypeId || !initialDeposit) {
+      !gender || !phoneNumber || !email || !address || !accountTypeId || !initialDeposit) {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
@@ -280,7 +280,9 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
 
     if (existingCustomer.rows.length > 0) {
       customerId = existingCustomer.rows[0].customer_id;
-      if (existingCustomer.rows[0].status !== 'ACTIVE') throw new Error('Customer account is not active');
+      if (existingCustomer.rows[0].status !== 'ACTIVE') {
+        throw new Error('Existing customer account is not active');
+      }
     } else {
       customerId = await generateCustomerId(client);
       await client.query(
@@ -306,12 +308,13 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
 
     const accountId = await generateAccountId(client, accountTypeId, branchId, agentId);
 
+    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
         current_balance, status
-      ) VALUES ($1, $2, $3, $4, 'ACTIVE')`,
-      [accountId, branchId, accountTypeId, deposit]
+      ) VALUES ($1, $2, $3, 0, 'ACTIVE')`,
+      [accountId, branchId, accountTypeId]
     );
 
     await client.query(
@@ -480,12 +483,13 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
     const accountId = await generateAccountId(client, accountTypeId, branchId, agentId);
 
     // Create the joint account
+    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
         current_balance, status
-      ) VALUES ($1, $2, $3, $4, 'ACTIVE')`,
-      [accountId, branchId, accountTypeId, deposit]
+      ) VALUES ($1, $2, $3, 0, 'ACTIVE')`,
+      [accountId, branchId, accountTypeId]
     );
 
     // Create account holder relationships for all customers

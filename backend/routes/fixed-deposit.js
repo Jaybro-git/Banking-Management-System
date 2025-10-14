@@ -4,6 +4,7 @@ const express = require('express');
 const pool = require('../db/index');
 const authenticateToken = require('../middleware/auth');
 const { recordFDInterest, generateTransactionId, generateReferenceNumber } = require('./transactions');
+const cron = require('node-cron');  // NEW: Import node-cron for scheduling
 
 const router = express.Router();
 
@@ -508,6 +509,12 @@ router.post('/pay-interest/:fdId', authenticateToken, async (req, res) => {
       if (daysSinceLastPayment < 30) {
         throw new Error(`Interest can only be paid after 30 days. Days since last payment: ${daysSinceLastPayment}`);
       }
+
+      // const minutesSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60));
+      
+      // if (minutesSinceLastPayment < 1) {
+      //   throw new Error(`Interest can only be paid after 1 minute. Minutes since last payment: ${minutesSinceLastPayment}`);
+      // }
     }
 
     // Record FD interest transaction
@@ -786,5 +793,96 @@ router.get('/:fdId/interest-history', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch interest payment history' });
   }
 });
+
+// NEW: Function to automatically pay interest for all eligible active FDs
+async function payAllFDInterests() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Get all active FDs
+    const fdResult = await client.query(
+      `SELECT fd.*, a.current_balance
+       FROM fixed_deposit fd
+       JOIN account a ON fd.account_id = a.account_id
+       WHERE fd.status = 'ACTIVE'`
+    );
+
+    const activeFDs = fdResult.rows;
+
+    for (const fd of activeFDs) {
+      // Calculate monthly interest
+      const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
+
+      // Check last interest payment to ensure 30 days have passed
+      const lastPaymentResult = await client.query(
+        `SELECT time_date_stamp
+         FROM transaction
+         WHERE account_id = $1 
+         AND transaction_type = 'FD_INTEREST'
+         AND description LIKE $2
+         ORDER BY time_date_stamp DESC
+         LIMIT 1`,
+        [fd.account_id, `%${fd.fd_id}%`]
+      );
+
+      let eligible = true;
+      if (lastPaymentResult.rows.length > 0) {
+        const lastPayment = new Date(lastPaymentResult.rows[0].time_date_stamp);
+        const daysSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60 * 60 * 24));
+        
+        if (daysSinceLastPayment < 30) {
+          eligible = false;
+        }
+
+        // const minutesSinceLastPayment = Math.floor((new Date() - lastPayment) / (1000 * 60));
+        
+        // if (minutesSinceLastPayment < 1) {
+        //   eligible = false;
+        // }
+      }
+
+      if (eligible && monthlyInterest > 0) {
+        // Record FD interest transaction
+        const { transactionId, referenceNumber } = await recordFDInterest(
+          client,
+          fd.account_id,
+          monthlyInterest,
+          `Automatic Monthly FD Interest - ${fd.fd_id}`,
+          parseFloat(fd.current_balance)
+        );
+
+        // Update account balance
+        await client.query(
+          `UPDATE account SET current_balance = current_balance + $1
+           WHERE account_id = $2`,
+          [monthlyInterest, fd.account_id]
+        );
+
+        console.log(`Automatic interest paid for FD ${fd.fd_id}: ${monthlyInterest.toFixed(2)}`);
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error in automatic FD interest payment:', err);
+  } finally {
+    client.release();
+  }
+}
+
+// NEW: Schedule automatic interest payment to run daily at midnight
+// This checks all FDs daily but only pays if 30 days have passed (effective monthly per FD)
+
+cron.schedule('0 0 * * *', () => {
+  console.log('Running automatic FD interest payment job...');
+  payAllFDInterests();
+});
+
+// cron.schedule('* * * * *', () => {
+//   console.log('Running automatic FD interest payment job...');
+//   payAllFDInterests();
+// });
 
 module.exports = router;
