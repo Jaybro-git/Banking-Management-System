@@ -13,45 +13,14 @@ router.use(cors({
 
 // Generate unique transaction ID: TXN-[00001]
 async function generateTransactionId(client = pool) {
-  const prefix = 'TXN-';
-
-  const result = await client.query(
-    `SELECT transaction_id FROM transaction 
-     WHERE transaction_id LIKE $1
-     ORDER BY transaction_id DESC LIMIT 1`,
-    [`${prefix}%`]
-  );
-
-  let sequence = 1;
-  if (result.rows.length > 0) {
-    const lastId = result.rows[0].transaction_id;
-    const lastSeq = parseInt(lastId.slice(prefix.length));
-    sequence = lastSeq + 1;
-  }
-
-  return `${prefix}${sequence.toString().padStart(5, '0')}`;
+  const result = await client.query('SELECT generate_transaction_id() AS id');
+  return result.rows[0].id;
 }
 
 // Generate reference number: REF-[8 random alphanumeric]
 async function generateReferenceNumber(client = pool) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-
-  let ref;
-  let exists;
-  do {
-    ref = 'REF-';
-    for (let i = 0; i < 8; i++) {
-      ref += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-
-    const result = await client.query(
-      'SELECT reference_number FROM transaction WHERE reference_number = $1',
-      [ref]
-    );
-    exists = result.rows.length > 0;
-  } while (exists);
-
-  return ref;
+  const result = await client.query('SELECT generate_reference_number() AS ref');
+  return result.rows[0].ref;
 }
 
 // Record initial deposit transaction
@@ -63,29 +32,17 @@ async function recordInitialDeposit(client = pool, accountId, amount, descriptio
     await client.query('BEGIN');
   }
   try {
-    const transactionId = await generateTransactionId(client);
-    const referenceNumber = await generateReferenceNumber(client);
-
-    await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'INITIAL', $3, 0, CURRENT_TIMESTAMP, $4, 'SUCCESS', $5)
-      RETURNING transaction_id, reference_number`,
-      [transactionId, accountId, amount, description, referenceNumber]
+    const result = await client.query(
+      'SELECT * FROM record_deposit($1, $2, $3, $4)',
+      [accountId, amount, description, 'INITIAL']
     );
-
-    // Update account balance (assuming initial balance is 0)
-    await client.query(
-      'UPDATE account SET current_balance = current_balance + $1 WHERE account_id = $2',
-      [amount, accountId]
-    );
+    const inserted = result.rows[0];
 
     if (ownClient) {
       await client.query('COMMIT');
     }
 
-    return { transactionId, referenceNumber };
+    return { transactionId: inserted.transaction_id, referenceNumber: inserted.reference_number };
   } catch (err) {
     if (ownClient) {
       await client.query('ROLLBACK');
@@ -108,48 +65,22 @@ async function recordDeposit(client = pool, accountId, amount, description = 'De
     await client.query('BEGIN');
   }
   try {
-    // Get current balance
-    const balanceResult = await client.query(
-      'SELECT current_balance FROM account WHERE account_id = $1',
-      [accountId]
+    const result = await client.query(
+      'SELECT * FROM record_deposit($1, $2, $3, $4)',
+      [accountId, amount, description, transactionType]
     );
-
-    if (balanceResult.rows.length === 0) {
-      throw new Error('Account not found');
-    }
-
-    const balanceBefore = parseFloat(balanceResult.rows[0].current_balance);
-    const transactionId = await generateTransactionId(client);
-    const referenceNumber = await generateReferenceNumber(client);
-
-    // Record transaction and return the timestamp
-    const transactionResult = await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, 'SUCCESS', $7)
-      RETURNING transaction_id, reference_number, time_date_stamp`,
-      [transactionId, accountId, transactionType, amount, balanceBefore, description, referenceNumber]
-    );
-
-    // Update account balance
-    await client.query(
-      'UPDATE account SET current_balance = current_balance + $1 WHERE account_id = $2',
-      [amount, accountId]
-    );
+    const inserted = result.rows[0];
 
     if (ownClient) {
       await client.query('COMMIT');
     }
 
-    const insertedTransaction = transactionResult.rows[0];
-
     return { 
-      transactionId: insertedTransaction.transaction_id, 
-      referenceNumber: insertedTransaction.reference_number,
-      time_date_stamp: insertedTransaction.time_date_stamp,
-      balanceBefore, 
-      balanceAfter: balanceBefore + amount 
+      transactionId: inserted.transaction_id, 
+      referenceNumber: inserted.reference_number,
+      time_date_stamp: inserted.time_date_stamp,
+      balanceBefore: inserted.balance_before, 
+      balanceAfter: inserted.balance_after 
     };
   } catch (err) {
     if (ownClient) {
@@ -173,53 +104,22 @@ async function recordWithdrawal(client = pool, accountId, amount, description = 
     await client.query('BEGIN');
   }
   try {
-    // Get current balance
-    const balanceResult = await client.query(
-      'SELECT current_balance FROM account WHERE account_id = $1',
-      [accountId]
+    const result = await client.query(
+      'SELECT * FROM record_withdrawal($1, $2, $3, $4)',
+      [accountId, amount, description, transactionType]
     );
-
-    if (balanceResult.rows.length === 0) {
-      throw new Error('Account not found');
-    }
-
-    const balanceBefore = parseFloat(balanceResult.rows[0].current_balance);
-
-    if (balanceBefore < amount) {
-      throw new Error('Insufficient balance');
-    }
-
-    const transactionId = await generateTransactionId(client);
-    const referenceNumber = await generateReferenceNumber(client);
-
-    // Record transaction and return the timestamp
-    const transactionResult = await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, 'SUCCESS', $7)
-      RETURNING transaction_id, reference_number, time_date_stamp`,
-      [transactionId, accountId, transactionType, amount, balanceBefore, description, referenceNumber]
-    );
-
-    // Update account balance
-    await client.query(
-      'UPDATE account SET current_balance = current_balance - $1 WHERE account_id = $2',
-      [amount, accountId]
-    );
+    const inserted = result.rows[0];
 
     if (ownClient) {
       await client.query('COMMIT');
     }
 
-    const insertedTransaction = transactionResult.rows[0];
-
     return { 
-      transactionId: insertedTransaction.transaction_id, 
-      referenceNumber: insertedTransaction.reference_number,
-      time_date_stamp: insertedTransaction.time_date_stamp,
-      balanceBefore, 
-      balanceAfter: balanceBefore - amount 
+      transactionId: inserted.transaction_id, 
+      referenceNumber: inserted.reference_number,
+      time_date_stamp: inserted.time_date_stamp,
+      balanceBefore: inserted.balance_before, 
+      balanceAfter: inserted.balance_after 
     };
   } catch (err) {
     if (ownClient) {
@@ -243,29 +143,24 @@ async function recordTransfer(client = pool, fromAccountId, toAccountId, amount,
     await client.query('BEGIN');
   }
   try {
-    // Generate shared reference number
-    const referenceNumber = await generateReferenceNumber(client);
-
-    // Record TRANSFER_OUT from sender
-    const fromDesc = `${description} to ${toAccountId}`;
-    const fromResult = await recordWithdrawal(client, fromAccountId, amount, fromDesc, 'TRANSFER_OUT');
-
-    // Record TRANSFER_IN to receiver
-    const toDesc = `${description} from ${fromAccountId}`;
-    const toResult = await recordDeposit(client, toAccountId, amount, toDesc, 'TRANSFER_IN');
+    const result = await client.query(
+      'SELECT * FROM record_transfer($1, $2, $3, $4)',
+      [fromAccountId, toAccountId, amount, description]
+    );
+    const inserted = result.rows[0];
 
     if (ownClient) {
       await client.query('COMMIT');
     }
 
     return {
-      transactionId: fromResult.transactionId, // Or generate a separate one if needed
-      referenceNumber,
-      time_date_stamp: fromResult.time_date_stamp,
-      fromBalanceBefore: fromResult.balanceBefore,
-      fromBalanceAfter: fromResult.balanceAfter,
-      toBalanceBefore: toResult.balanceBefore,
-      toBalanceAfter: toResult.balanceAfter
+      transactionId: inserted.transaction_id, 
+      referenceNumber: inserted.reference_number,
+      time_date_stamp: inserted.time_date_stamp,
+      fromBalanceBefore: inserted.from_balance_before,
+      fromBalanceAfter: inserted.from_balance_after,
+      toBalanceBefore: inserted.to_balance_before,
+      toBalanceAfter: inserted.to_balance_after
     };
   } catch (err) {
     if (ownClient) {
@@ -289,28 +184,17 @@ async function recordFDInterest(client = pool, accountId, amount, description = 
     await client.query('BEGIN');
   }
   try {
-    const transactionId = await generateTransactionId(client);
-    const referenceNumber = await generateReferenceNumber(client);
-
-    await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'FD_INTEREST', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
-      [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
+    const result = await client.query(
+      'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
+      [accountId, amount, description, 'FD_INTEREST', balanceBefore]
     );
-
-    // Update account balance
-    await client.query(
-      'UPDATE account SET current_balance = current_balance + $1 WHERE account_id = $2',
-      [amount, accountId]
-    );
+    const inserted = result.rows[0];
 
     if (ownClient) {
       await client.query('COMMIT');
     }
 
-    return { transactionId, referenceNumber };
+    return { transactionId: inserted.transaction_id, referenceNumber: inserted.reference_number };
   } catch (err) {
     if (ownClient) {
       await client.query('ROLLBACK');
@@ -626,6 +510,151 @@ router.post('/transfer', authenticateToken, async (req, res) => {
   }
 });
 
+// Get all transactions with customer and employee info
+router.get('/all', authenticateToken, async (req, res) => {
+  const { limit = 100, offset = 0 } = req.query;
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+        t.transaction_id, 
+        t.account_id, 
+        t.transaction_type, 
+        t.amount,
+        t.balance_before, 
+        t.time_date_stamp, 
+        t.description, 
+        t.status, 
+        t.reference_number,
+        COALESCE(
+          STRING_AGG(DISTINCT c.first_name || ' ' || c.last_name, ', '),
+          'N/A'
+        ) as customer_name,
+        e.employee_id,
+        COALESCE(e.first_name || ' ' || e.last_name, 'System') as employee_name,
+        b.branch_name
+       FROM transaction t
+       LEFT JOIN account_holder ah ON t.account_id = ah.account_id
+       LEFT JOIN customer c ON ah.customer_id = c.customer_id
+       LEFT JOIN account a ON t.account_id = a.account_id
+       LEFT JOIN branch b ON a.branch_id = b.branch_id
+       LEFT JOIN employee e ON e.employee_id = $3
+       GROUP BY t.transaction_id, t.account_id, t.transaction_type, t.amount,
+                t.balance_before, t.time_date_stamp, t.description, t.status, 
+                t.reference_number, e.employee_id, e.first_name, e.last_name, b.branch_name
+       ORDER BY t.time_date_stamp DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset, req.user?.employee_id]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching all transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+// Get full transaction details for printing
+router.get('/:transactionId/full', authenticateToken, async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    // Get transaction details
+    const txnResult = await pool.query(
+      `SELECT * FROM transaction WHERE transaction_id = $1`,
+      [transactionId]
+    );
+
+    if (txnResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const txn = txnResult.rows[0];
+
+    // Get account info
+    const accountResult = await pool.query(
+      `SELECT a.account_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [txn.account_id]
+    );
+
+    // Get holders
+    const holdersResult = await pool.query(
+      `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1`,
+      [txn.account_id]
+    );
+
+    let responseData = {
+      transaction: txn,
+      accountInfo: {
+        account: accountResult.rows[0],
+        holders: holdersResult.rows
+      }
+    };
+
+    // For transfers, get the other account info
+    if (txn.transaction_type === 'TRANSFER_IN' || txn.transaction_type === 'TRANSFER_OUT') {
+      // Find the paired transaction (same reference number, different account)
+      const pairedTxnResult = await pool.query(
+        `SELECT account_id FROM transaction 
+         WHERE reference_number = $1 AND account_id != $2`,
+        [txn.reference_number, txn.account_id]
+      );
+
+      if (pairedTxnResult.rows.length > 0) {
+        const otherAccountId = pairedTxnResult.rows[0].account_id;
+
+        const otherAccountResult = await pool.query(
+          `SELECT a.account_id, at.account_type_name
+           FROM account a
+           JOIN account_type at ON a.account_type_id = at.account_type_id
+           WHERE a.account_id = $1`,
+          [otherAccountId]
+        );
+
+        const otherHoldersResult = await pool.query(
+          `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+           FROM account_holder ah
+           JOIN customer c ON ah.customer_id = c.customer_id
+           WHERE ah.account_id = $1`,
+          [otherAccountId]
+        );
+
+        if (txn.transaction_type === 'TRANSFER_OUT') {
+          responseData = {
+            ...responseData,
+            fromAccountInfo: responseData.accountInfo,
+            toAccountInfo: {
+              account: otherAccountResult.rows[0],
+              holders: otherHoldersResult.rows
+            }
+          };
+        } else {
+          responseData = {
+            ...responseData,
+            fromAccountInfo: {
+              account: otherAccountResult.rows[0],
+              holders: otherHoldersResult.rows
+            },
+            toAccountInfo: responseData.accountInfo
+          };
+        }
+      }
+    }
+
+    res.json(responseData);
+  } catch (err) {
+    console.error('Error fetching full transaction details:', err);
+    res.status(500).json({ error: 'Failed to fetch transaction details' });
+  }
+});
+
+// Export the router with updated endpoints
 module.exports = {
   router,
   recordInitialDeposit,

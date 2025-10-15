@@ -20,7 +20,6 @@ import {
   UserPlus,
   Vault,
   Receipt,
-  Users,
 } from "lucide-react";
 
 import { Sidebar } from "@/app/components/Sidebar";
@@ -45,20 +44,13 @@ export default function AgentDashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [filterType, setFilterType] = useState<"All" | "Deposit" | "Withdrawal">("All");
+  const [filterType, setFilterType] = useState<string>("All");
   const [searchField, setSearchField] = useState<"customer" | "account" | "ref" | "date">("customer");
 
-  // Use generic string type for customer filters/search
+  // Customer filters
   const [customerFilterType, setCustomerFilterType] = useState<string>("All");
   const [customerSearchField, setCustomerSearchField] = useState<string>("account");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
-
-  const transactions = [
-    { date: "2025-08-01", account: "SA-004-017-00023", type: "Deposit", amount: 5000, ref: "TXN9324", customer: "John Doe" },
-    { date: "2025-08-02", account: "SA-004-005-00008", type: "Withdrawal", amount: 2000, ref: "TXN9325", customer: "Jane Smith" },
-    { date: "2025-08-03", account: "SA-004-017-00056", type: "Deposit", amount: 3500, ref: "TXN9326", customer: "Alice Brown" },
-    { date: "2025-08-04", account: "SA-004-002-00028", type: "Withdrawal", amount: 1500, ref: "TXN9327", customer: "Bob Wilson" },
-  ];
 
   const chartData = {
     labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"],
@@ -109,7 +101,6 @@ export default function AgentDashboard() {
         {activeTab === "overview" && <OverviewTab quickActions={quickActions} chartData={chartData} />}
         {activeTab === "transactions" && (
           <TransactionsTab
-            transactions={transactions}
             filterType={filterType}
             setFilterType={setFilterType}
             searchField={searchField}
@@ -120,7 +111,7 @@ export default function AgentDashboard() {
         )}
         {activeTab === "customers" && (
           <CustomersTab
-            customerFilterType={customerFilterType as any} // cast to satisfy TS
+            customerFilterType={customerFilterType as any}
             setCustomerFilterType={(val: any) => setCustomerFilterType(val)}
             customerSearchField={customerSearchField as any}
             setCustomerSearchField={(val: any) => setCustomerSearchField(val)}

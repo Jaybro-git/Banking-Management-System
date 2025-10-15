@@ -1,10 +1,9 @@
-// fixed-deposit.js (Updated)
 // backend/routes/fixed-deposit.js
 const express = require('express');
 const pool = require('../db/index');
 const authenticateToken = require('../middleware/auth');
-const { recordFDInterest, generateTransactionId, generateReferenceNumber } = require('./transactions');
-const cron = require('node-cron');  // NEW: Import node-cron for scheduling
+const { generateTransactionId, generateReferenceNumber } = require('./transactions');
+const cron = require('node-cron');
 
 const router = express.Router();
 
@@ -228,7 +227,7 @@ router.get('/search', authenticateToken, async (req, res) => {
         [fd.account_id, `%${fd.fd_id}%`]
       );
 
-      // NEW: Get total amount of interest payments for THIS specific FD
+      // Get total amount of interest payments for THIS specific FD
       const sumResult = await pool.query(
         `SELECT COALESCE(SUM(amount), 0) as total_interest_paid_amount
         FROM transaction
@@ -327,7 +326,7 @@ router.get('/:fdId', authenticateToken, async (req, res) => {
       [fd.account_id, `%${fdId}%`]
     );
 
-    // NEW: Get total amount of interest payments for THIS specific FD
+    // Get total amount of interest payments for THIS specific FD
     const sumResult = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total_interest_paid_amount
       FROM transaction
@@ -452,25 +451,13 @@ router.post('/create', authenticateToken, async (req, res) => {
       [fdId, accountId, fdType, fdAmount, interestRate, startDate, maturityDate]
     );
 
-    // Deduct amount from savings account
-    await client.query(
-      `UPDATE account SET current_balance = current_balance - $1
-       WHERE account_id = $2`,
-      [fdAmount, accountId]
+    // Use record_withdrawal function to deduct amount from savings account
+    const withdrawalResult = await client.query(
+      'SELECT * FROM record_withdrawal($1, $2, $3, $4)',
+      [accountId, fdAmount, `Fixed Deposit opened - ${fdId}`, 'WITHDRAWAL']
     );
 
-    // Record transaction for FD creation
-    const transactionId = await generateTransactionId(client);
-    const referenceNumber = await generateReferenceNumber(client);
-
-    await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'WITHDRAWAL', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
-      [transactionId, accountId, fdAmount, currentBalance, 
-       `Fixed Deposit opened - ${fdId}`, referenceNumber]
-    );
+    const transaction = withdrawalResult.rows[0];
 
     await client.query('COMMIT');
 
@@ -488,8 +475,8 @@ router.post('/create', authenticateToken, async (req, res) => {
         monthly_interest: calculateMonthlyInterest(fdAmount, interestRate).toFixed(2)
       },
       transaction: {
-        transaction_id: transactionId,
-        reference_number: referenceNumber
+        transaction_id: transaction.transaction_id,
+        reference_number: transaction.reference_number
       }
     });
   } catch (err) {
@@ -586,7 +573,7 @@ router.post('/renew/:fdId', authenticateToken, async (req, res) => {
   }
 });
 
-// Close Fixed Deposit (Premature)
+// Close Fixed Deposit (using database function)
 router.post('/close/:fdId', authenticateToken, async (req, res) => {
   const { fdId } = req.params;
 
@@ -595,110 +582,27 @@ router.post('/close/:fdId', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Get FD details
-    const fdResult = await client.query(
-      `SELECT fd.*, a.current_balance
-       FROM fixed_deposit fd
-       JOIN account a ON fd.account_id = a.account_id
-       WHERE fd.fd_id = $1 AND fd.status = 'ACTIVE'`,
+    // Use the close_fd database function
+    const result = await client.query(
+      'SELECT close_fd($1) as result',
       [fdId]
     );
 
-    if (fdResult.rows.length === 0) {
-      throw new Error('Active Fixed Deposit not found');
-    }
-
-    const fd = fdResult.rows[0];
-
-    // Calculate any pending interest (no penalty, just pro-rated interest)
-    const today = new Date();
-    const startDate = new Date(fd.start_date);
-    const monthsElapsed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 30));
-    const monthlyInterest = calculateMonthlyInterest(parseFloat(fd.amount), parseFloat(fd.interest_rate));
-    
-    // Get total interest already paid for THIS specific FD
-    const paidInterestResult = await client.query(
-      `SELECT COALESCE(SUM(amount), 0) as total_interest_paid
-       FROM transaction
-       WHERE account_id = $1 
-       AND transaction_type = 'FD_INTEREST'
-       AND description LIKE $2`,
-      [fd.account_id, `%${fdId}%`]
-    );
-
-    const totalInterestPaid = parseFloat(paidInterestResult.rows[0].total_interest_paid);
-    const totalInterestAccrued = monthlyInterest * monthsElapsed;
-    const pendingInterest = Math.max(0, totalInterestAccrued - totalInterestPaid);
-
-    // Close FD
-    await client.query(
-      `UPDATE fixed_deposit SET status = 'CLOSED'
-       WHERE fd_id = $1`,
-      [fdId]
-    );
-
-    // Return principal to account
-    const balanceBefore = parseFloat(fd.current_balance);
-    await client.query(
-      `UPDATE account SET current_balance = current_balance + $1
-       WHERE account_id = $2`,
-      [parseFloat(fd.amount), fd.account_id]
-    );
-
-    // Record principal return transaction
-    const transactionId1 = await generateTransactionId(client);
-    const referenceNumber1 = await generateReferenceNumber(client);
-
-    await client.query(
-      `INSERT INTO transaction (
-        transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'DEPOSIT', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)`,
-      [transactionId1, fd.account_id, fd.amount, balanceBefore,
-       `FD Closure - Principal returned - ${fdId}`, referenceNumber1]
-    );
-
-    // Pay any pending interest if applicable
-    let interestTransaction = null;
-    if (pendingInterest > 0) {
-      const newBalance = balanceBefore + parseFloat(fd.amount);
-      const { transactionId, referenceNumber } = await recordFDInterest(
-        client,
-        fd.account_id,
-        pendingInterest,
-        `FD Closure - Final interest payment - ${fdId}`,
-        newBalance
-      );
-
-      await client.query(
-        `UPDATE account SET current_balance = current_balance + $1
-         WHERE account_id = $2`,
-        [pendingInterest, fd.account_id]
-      );
-
-      interestTransaction = { transactionId, referenceNumber, amount: pendingInterest.toFixed(2) };
-    }
+    const closureResult = result.rows[0].result;
 
     await client.query('COMMIT');
 
-    res.json({
-      message: 'Fixed Deposit closed successfully',
-      fd_id: fdId,
-      principal_returned: parseFloat(fd.amount).toFixed(2),
-      pending_interest_paid: pendingInterest > 0 ? pendingInterest.toFixed(2) : '0.00',
-      total_returned: (parseFloat(fd.amount) + pendingInterest).toFixed(2),
-      transactions: {
-        principal: {
-          transaction_id: transactionId1,
-          reference_number: referenceNumber1
-        },
-        interest: interestTransaction
-      }
-    });
+    res.json(closureResult);
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error closing FD:', err);
-    res.status(400).json({ error: err.message || 'Failed to close fixed deposit' });
+    
+    // Handle specific error messages from the database function
+    if (err.message.includes('Active FD not found')) {
+      res.status(404).json({ error: 'Active Fixed Deposit not found' });
+    } else {
+      res.status(400).json({ error: err.message || 'Failed to close fixed deposit' });
+    }
   } finally {
     client.release();
   }
@@ -741,7 +645,7 @@ router.get('/:fdId/interest-history', authenticateToken, async (req, res) => {
   }
 });
 
-// NEW: Function to automatically pay interest for all eligible active FDs
+// Function to automatically pay interest for all eligible active FDs
 async function payAllFDInterests() {
   const client = await pool.connect();
   try {
@@ -777,23 +681,21 @@ async function payAllFDInterests() {
         ? new Date(lastPaymentResult.rows[0].time_date_stamp) 
         : new Date(fd.start_date);
       
-      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24));
+      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24)); // 1000 * 60
       
-      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) {
-        // Record FD interest transaction
-        const { transactionId, referenceNumber } = await recordFDInterest(
-          client,
-          fd.account_id,
-          monthlyInterest,
-          `Automatic Monthly FD Interest - ${fd.fd_id}`,
-          parseFloat(fd.current_balance)
-        );
-
-        // Update account balance
+      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >= 1
+        // Use record_deposit function with FD_INTEREST type
+        const balanceBefore = parseFloat(fd.current_balance);
+        
         await client.query(
-          `UPDATE account SET current_balance = current_balance + $1
-           WHERE account_id = $2`,
-          [monthlyInterest, fd.account_id]
+          'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
+          [
+            fd.account_id,
+            monthlyInterest,
+            `Automatic Monthly FD Interest - ${fd.fd_id}`,
+            'FD_INTEREST',
+            balanceBefore
+          ]
         );
 
         console.log(`Automatic interest paid for FD ${fd.fd_id}: ${monthlyInterest.toFixed(2)}`);
@@ -801,6 +703,7 @@ async function payAllFDInterests() {
     }
 
     await client.query('COMMIT');
+    console.log('Automatic FD interest payment job completed successfully');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error in automatic FD interest payment:', err);
@@ -809,16 +712,16 @@ async function payAllFDInterests() {
   }
 }
 
-// NEW: Schedule automatic interest payment to run daily at midnight
+// Schedule automatic interest payment to run daily at midnight
 // This checks all FDs daily but only pays if 30 days have passed (effective monthly per FD)
-
 cron.schedule('0 0 * * *', () => {
   console.log('Running automatic FD interest payment job...');
   payAllFDInterests();
 });
 
+// For testing: Run every minute (comment out in production)
 // cron.schedule('* * * * *', () => {
-//   console.log('Running automatic FD interest payment job...');
+//   console.log('Running automatic FD interest payment job (test mode)...');
 //   payAllFDInterests();
 // });
 
