@@ -87,7 +87,7 @@ export default function AgentDashboard() {
     { icon: <PiggyBank className="w-7 h-7 text-green-600" />, title: "New Deposit", description: "Create a New Customer Deposit Request", href: "/NewDeposit" },
     { icon: <Banknote className="w-7 h-7 text-green-600" />, title: "Withdrawal", description: "Process a Customer Withdrawal Request", href: "/Withdrawal" },
     { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
-    { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Transactions History", description: "View Transaction History for Accounts", href: "/Transactions" },
+    { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Fund Transfer", description: "Transfer Funds Between Accounts and Manage", href: "/Transfer" },
     { icon: <BarChart2 className="w-7 h-7 text-green-600" />, title: "View Reports", description: "Generate and View Detailed Reports on Transactions and Accounts", href: "/Reports" },
     { icon: <Headset className="w-7 h-7 text-green-600" />, title: "Customer Support", description: "Assist Customers With Their Queries and Issues", href: "/test" },
   ];

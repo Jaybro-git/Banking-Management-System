@@ -100,7 +100,7 @@ async function recordInitialDeposit(client = pool, accountId, amount, descriptio
 }
 
 // Record deposit transaction
-async function recordDeposit(client = pool, accountId, amount, description = 'Deposit') {
+async function recordDeposit(client = pool, accountId, amount, description = 'Deposit', transactionType = 'DEPOSIT') {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -127,9 +127,9 @@ async function recordDeposit(client = pool, accountId, amount, description = 'De
       `INSERT INTO transaction (
         transaction_id, account_id, transaction_type, amount,
         balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'DEPOSIT', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)
+      ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, 'SUCCESS', $7)
       RETURNING transaction_id, reference_number, time_date_stamp`,
-      [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
+      [transactionId, accountId, transactionType, amount, balanceBefore, description, referenceNumber]
     );
 
     // Update account balance
@@ -165,7 +165,7 @@ async function recordDeposit(client = pool, accountId, amount, description = 'De
 }
 
 // Record withdrawal transaction
-async function recordWithdrawal(client = pool, accountId, amount, description = 'Withdrawal') {
+async function recordWithdrawal(client = pool, accountId, amount, description = 'Withdrawal', transactionType = 'WITHDRAWAL') {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -197,9 +197,9 @@ async function recordWithdrawal(client = pool, accountId, amount, description = 
       `INSERT INTO transaction (
         transaction_id, account_id, transaction_type, amount,
         balance_before, time_date_stamp, description, status, reference_number
-      ) VALUES ($1, $2, 'WITHDRAWAL', $3, $4, CURRENT_TIMESTAMP, $5, 'SUCCESS', $6)
+      ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, 'SUCCESS', $7)
       RETURNING transaction_id, reference_number, time_date_stamp`,
-      [transactionId, accountId, amount, balanceBefore, description, referenceNumber]
+      [transactionId, accountId, transactionType, amount, balanceBefore, description, referenceNumber]
     );
 
     // Update account balance
@@ -227,6 +227,52 @@ async function recordWithdrawal(client = pool, accountId, amount, description = 
     }
     console.error('Error recording withdrawal:', err);
     throw new Error('Failed to record withdrawal transaction');
+  } finally {
+    if (ownClient) {
+      client.release();
+    }
+  }
+}
+
+// Record transfer (withdrawal from one, deposit to another)
+async function recordTransfer(client = pool, fromAccountId, toAccountId, amount, description = 'Transfer') {
+  let ownClient = false;
+  if (client === pool) {
+    client = await pool.connect();
+    ownClient = true;
+    await client.query('BEGIN');
+  }
+  try {
+    // Generate shared reference number
+    const referenceNumber = await generateReferenceNumber(client);
+
+    // Record TRANSFER_OUT from sender
+    const fromDesc = `${description} to ${toAccountId}`;
+    const fromResult = await recordWithdrawal(client, fromAccountId, amount, fromDesc, 'TRANSFER_OUT');
+
+    // Record TRANSFER_IN to receiver
+    const toDesc = `${description} from ${fromAccountId}`;
+    const toResult = await recordDeposit(client, toAccountId, amount, toDesc, 'TRANSFER_IN');
+
+    if (ownClient) {
+      await client.query('COMMIT');
+    }
+
+    return {
+      transactionId: fromResult.transactionId, // Or generate a separate one if needed
+      referenceNumber,
+      time_date_stamp: fromResult.time_date_stamp,
+      fromBalanceBefore: fromResult.balanceBefore,
+      fromBalanceAfter: fromResult.balanceAfter,
+      toBalanceBefore: toResult.balanceBefore,
+      toBalanceAfter: toResult.balanceAfter
+    };
+  } catch (err) {
+    if (ownClient) {
+      await client.query('ROLLBACK');
+    }
+    console.error('Error recording transfer:', err);
+    throw new Error('Failed to record transfer transaction');
   } finally {
     if (ownClient) {
       client.release();
@@ -493,12 +539,100 @@ router.post('/withdrawal', authenticateToken, async (req, res) => {
   }
 });
 
+// Process new transfer
+router.post('/transfer', authenticateToken, async (req, res) => {
+  const { fromAccountId, toAccountId, amount, description = 'Transfer' } = req.body;
+
+  if (!fromAccountId || !toAccountId || !amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  if (fromAccountId === toAccountId) {
+    return res.status(400).json({ error: 'Cannot transfer to the same account' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const result = await recordTransfer(client, fromAccountId, toAccountId, parseFloat(amount), description);
+
+    // Fetch from account info
+    const fromAccountResult = await client.query(
+      `SELECT a.account_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [fromAccountId]
+    );
+
+    if (fromAccountResult.rows.length === 0) {
+      throw new Error('From account not found');
+    }
+
+    const fromAccount = fromAccountResult.rows[0];
+
+    const fromHoldersResult = await client.query(
+      `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1`,
+      [fromAccountId]
+    );
+
+    const fromHolders = fromHoldersResult.rows;
+
+    // Fetch to account info
+    const toAccountResult = await client.query(
+      `SELECT a.account_id, at.account_type_name
+       FROM account a
+       JOIN account_type at ON a.account_type_id = at.account_type_id
+       WHERE a.account_id = $1`,
+      [toAccountId]
+    );
+
+    if (toAccountResult.rows.length === 0) {
+      throw new Error('To account not found');
+    }
+
+    const toAccount = toAccountResult.rows[0];
+
+    const toHoldersResult = await client.query(
+      `SELECT c.first_name, c.last_name, c.nic_number, c.phone_number, c.email
+       FROM account_holder ah
+       JOIN customer c ON ah.customer_id = c.customer_id
+       WHERE ah.account_id = $1`,
+      [toAccountId]
+    );
+
+    const toHolders = toHoldersResult.rows;
+
+    await client.query('COMMIT');
+
+    res.json({
+      transaction: result,
+      fromAccountInfo: { account: fromAccount, holders: fromHolders },
+      toAccountInfo: { account: toAccount, holders: toHolders },
+      transferAmount: amount,
+      remarks: description
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error processing transfer:', err);
+    res.status(500).json({ error: 'Failed to process transfer' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = {
   router,
   recordInitialDeposit,
   recordDeposit,
   recordWithdrawal,
   recordFDInterest,
+  recordTransfer,
   generateTransactionId,
   generateReferenceNumber
 };
