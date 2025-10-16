@@ -15,11 +15,12 @@ import {
 import {
   PiggyBank,
   BarChart2,
-  Headset,
   Banknote,
   UserPlus,
   Vault,
   Receipt,
+  User,
+  Building,
 } from "lucide-react";
 
 import { Sidebar } from "@/app/components/Sidebar";
@@ -81,7 +82,8 @@ export default function AgentDashboard() {
     { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
     { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Fund Transfer", description: "Transfer Funds Between Accounts and Manage", href: "/Transfer" },
     { icon: <BarChart2 className="w-7 h-7 text-green-600" />, title: "View Reports", description: "Generate and View Detailed Reports on Transactions and Accounts", href: "/Reports" },
-    { icon: <Headset className="w-7 h-7 text-green-600" />, title: "Customer Support", description: "Assist Customers With Their Queries and Issues", href: "/test" },
+    { icon: <Building className="w-7 h-7 text-green-600" />, title: "Bank Details", description: "View and Manage Bank Branch Information", href: "/test" },
+    { icon: <User className="w-7 h-7 text-green-600" />, title: "Agent Profile", description: "View and Edit Your Agent Profile and Personal Information", href: "/test" },
   ];
 
   return (

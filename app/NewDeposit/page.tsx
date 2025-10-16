@@ -19,9 +19,9 @@ const Header: React.FC<HeaderProps> = ({ activeTab }) => {
       </div>
       <div className="flex items-center space-x-4">
         <Link href="/" passHref>
-        <Button type="button" variant="danger" size="md" className="w-full mt-6">
+          <Button type="button" variant="danger" size="md" className="w-full mt-6">
             Cancel
-        </Button>
+          </Button>
         </Link>
       </div>
     </header>
@@ -47,6 +47,8 @@ interface Transaction {
   referenceNumber: string;
   balanceBefore: number;
   balanceAfter: number;
+  time_date_stamp: string;
+  employee_id?: string; // Added to handle employee_id from backend
 }
 
 interface Account {
@@ -149,7 +151,7 @@ export default function NewDepositsPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        credentials: 'include',
+        credentials: 'include', // Ensures JWT token is sent for employee_id extraction on backend
         body: JSON.stringify({
           accountId: form.accountNumber,
           amount: parseFloat(form.depositAmount),

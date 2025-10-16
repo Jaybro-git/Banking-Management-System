@@ -1,4 +1,3 @@
-// backend/routes/transactions.js
 const express = require('express');
 const pool = require('../db/index');
 const authenticateToken = require('../middleware/auth');
@@ -24,7 +23,7 @@ async function generateReferenceNumber(client = pool) {
 }
 
 // Record initial deposit transaction
-async function recordInitialDeposit(client = pool, accountId, amount, description = 'Initial deposit') {
+async function recordInitialDeposit(client = pool, accountId, amount, description = 'Initial deposit', employeeId) {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -33,8 +32,8 @@ async function recordInitialDeposit(client = pool, accountId, amount, descriptio
   }
   try {
     const result = await client.query(
-      'SELECT * FROM record_deposit($1, $2, $3, $4)',
-      [accountId, amount, description, 'INITIAL']
+      'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
+      [accountId, amount, description, 'INITIAL', employeeId]
     );
     const inserted = result.rows[0];
 
@@ -57,7 +56,7 @@ async function recordInitialDeposit(client = pool, accountId, amount, descriptio
 }
 
 // Record deposit transaction
-async function recordDeposit(client = pool, accountId, amount, description = 'Deposit', transactionType = 'DEPOSIT') {
+async function recordDeposit(client = pool, accountId, amount, description = 'Deposit', transactionType = 'DEPOSIT', employeeId) {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -66,8 +65,8 @@ async function recordDeposit(client = pool, accountId, amount, description = 'De
   }
   try {
     const result = await client.query(
-      'SELECT * FROM record_deposit($1, $2, $3, $4)',
-      [accountId, amount, description, transactionType]
+      'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
+      [accountId, amount, description, transactionType, employeeId]
     );
     const inserted = result.rows[0];
 
@@ -96,7 +95,7 @@ async function recordDeposit(client = pool, accountId, amount, description = 'De
 }
 
 // Record withdrawal transaction
-async function recordWithdrawal(client = pool, accountId, amount, description = 'Withdrawal', transactionType = 'WITHDRAWAL') {
+async function recordWithdrawal(client = pool, accountId, amount, description = 'Withdrawal', transactionType = 'WITHDRAWAL', employeeId) {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -105,8 +104,8 @@ async function recordWithdrawal(client = pool, accountId, amount, description = 
   }
   try {
     const result = await client.query(
-      'SELECT * FROM record_withdrawal($1, $2, $3, $4)',
-      [accountId, amount, description, transactionType]
+      'SELECT * FROM record_withdrawal($1, $2, $3, $4, $5)',
+      [accountId, amount, description, transactionType, employeeId]
     );
     const inserted = result.rows[0];
 
@@ -135,7 +134,7 @@ async function recordWithdrawal(client = pool, accountId, amount, description = 
 }
 
 // Record transfer (withdrawal from one, deposit to another)
-async function recordTransfer(client = pool, fromAccountId, toAccountId, amount, description = 'Transfer') {
+async function recordTransfer(client = pool, fromAccountId, toAccountId, amount, description = 'Transfer', employeeId) {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -144,8 +143,8 @@ async function recordTransfer(client = pool, fromAccountId, toAccountId, amount,
   }
   try {
     const result = await client.query(
-      'SELECT * FROM record_transfer($1, $2, $3, $4)',
-      [fromAccountId, toAccountId, amount, description]
+      'SELECT * FROM record_transfer($1, $2, $3, $4, $5)',
+      [fromAccountId, toAccountId, amount, description, employeeId]
     );
     const inserted = result.rows[0];
 
@@ -176,7 +175,7 @@ async function recordTransfer(client = pool, fromAccountId, toAccountId, amount,
 }
 
 // Record FD Interest transaction
-async function recordFDInterest(client = pool, accountId, amount, description = 'FD Interest', balanceBefore) {
+async function recordFDInterest(client = pool, accountId, amount, description = 'FD Interest', balanceBefore, employeeId) {
   let ownClient = false;
   if (client === pool) {
     client = await pool.connect();
@@ -185,8 +184,8 @@ async function recordFDInterest(client = pool, accountId, amount, description = 
   }
   try {
     const result = await client.query(
-      'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
-      [accountId, amount, description, 'FD_INTEREST', balanceBefore]
+      'SELECT * FROM record_deposit($1, $2, $3, $4, $5, $6)',
+      [accountId, amount, description, 'FD_INTEREST', employeeId, balanceBefore]
     );
     const inserted = result.rows[0];
 
@@ -217,7 +216,7 @@ router.get('/account/:accountId/history', authenticateToken, async (req, res) =>
     const result = await pool.query(
       `SELECT 
         transaction_id, account_id, transaction_type, amount,
-        balance_before, time_date_stamp, description, status, reference_number
+        balance_before, time_date_stamp, description, status, reference_number, employee_id
        FROM transaction
        WHERE account_id = $1
        ORDER BY time_date_stamp DESC
@@ -240,7 +239,7 @@ router.get('/transaction/:transactionId', authenticateToken, async (req, res) =>
     const result = await pool.query(
       `SELECT 
         t.transaction_id, t.account_id, t.transaction_type, t.amount,
-        t.balance_before, t.time_date_stamp, t.description, t.status, t.reference_number,
+        t.balance_before, t.time_date_stamp, t.description, t.status, t.reference_number, t.employee_id,
         a.account_type_id, at.account_type_name
        FROM transaction t
        JOIN account a ON t.account_id = a.account_id
@@ -310,6 +309,7 @@ router.get('/account/:accountId/info', authenticateToken, async (req, res) => {
 // Process new deposit
 router.post('/deposit', authenticateToken, async (req, res) => {
   const { accountId, amount, description = 'Deposit' } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!accountId || !amount) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -320,7 +320,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const result = await recordDeposit(client, accountId, parseFloat(amount), description);
+    const result = await recordDeposit(client, accountId, parseFloat(amount), description, 'DEPOSIT', employeeId);
 
     // Fetch account info
     const accountResult = await client.query(
@@ -368,6 +368,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 // Process new withdrawal
 router.post('/withdrawal', authenticateToken, async (req, res) => {
   const { accountId, amount, description = 'Withdrawal' } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!accountId || !amount) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -378,7 +379,7 @@ router.post('/withdrawal', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const result = await recordWithdrawal(client, accountId, parseFloat(amount), description);
+    const result = await recordWithdrawal(client, accountId, parseFloat(amount), description, 'WITHDRAWAL', employeeId);
 
     // Fetch account info
     const accountResult = await client.query(
@@ -426,6 +427,7 @@ router.post('/withdrawal', authenticateToken, async (req, res) => {
 // Process new transfer
 router.post('/transfer', authenticateToken, async (req, res) => {
   const { fromAccountId, toAccountId, amount, description = 'Transfer' } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!fromAccountId || !toAccountId || !amount) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -440,7 +442,7 @@ router.post('/transfer', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const result = await recordTransfer(client, fromAccountId, toAccountId, parseFloat(amount), description);
+    const result = await recordTransfer(client, fromAccountId, toAccountId, parseFloat(amount), description, employeeId);
 
     // Fetch from account info
     const fromAccountResult = await client.query(
@@ -526,25 +528,26 @@ router.get('/all', authenticateToken, async (req, res) => {
         t.description, 
         t.status, 
         t.reference_number,
+        t.employee_id,
         COALESCE(
           STRING_AGG(DISTINCT c.first_name || ' ' || c.last_name, ', '),
           'N/A'
         ) as customer_name,
-        e.employee_id,
-        COALESCE(e.first_name || ' ' || e.last_name, 'System') as employee_name,
-        b.branch_name
+        MIN(e.employee_id) as employee_id,
+        COALESCE(MIN(e.first_name || ' ' || e.last_name), 'System') as employee_name,
+        MIN(b.branch_name) as branch_name
        FROM transaction t
        LEFT JOIN account_holder ah ON t.account_id = ah.account_id
        LEFT JOIN customer c ON ah.customer_id = c.customer_id
+       LEFT JOIN employee e ON t.employee_id = e.employee_id
        LEFT JOIN account a ON t.account_id = a.account_id
        LEFT JOIN branch b ON a.branch_id = b.branch_id
-       LEFT JOIN employee e ON e.employee_id = $3
        GROUP BY t.transaction_id, t.account_id, t.transaction_type, t.amount,
                 t.balance_before, t.time_date_stamp, t.description, t.status, 
-                t.reference_number, e.employee_id, e.first_name, e.last_name, b.branch_name
+                t.reference_number, t.employee_id
        ORDER BY t.time_date_stamp DESC
        LIMIT $1 OFFSET $2`,
-      [limit, offset, req.user?.employee_id]
+      [limit, offset]
     );
 
     res.json(result.rows);

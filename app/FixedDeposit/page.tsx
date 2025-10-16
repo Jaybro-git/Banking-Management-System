@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Button } from '@/app/components/ui/Button';
 import { TextInput } from '@/app/components/ui/TextInput';
-import FDStatementPrint from '@/app/components/FDStatementPrint';  // New import
+import FDStatementPrint from '@/app/components/FDStatementPrint';
 
 interface HeaderProps {
   activeTab: string;
@@ -79,12 +79,13 @@ export default function FixedDepositPage() {
     term: ''
   });
 
+
+
   const [accountHolders, setAccountHolders] = useState<AccountHolder[]>([]);
   const [checkingAccount, setCheckingAccount] = useState(false);
 
   const [searchResults, setSearchResults] = useState<FDDetails[]>([]);
 
-  // New states for printing
   const [printFD, setPrintFD] = useState<FDDetails | null>(null);
   const [printHistory, setPrintHistory] = useState<any[]>([]);
 
@@ -112,7 +113,7 @@ export default function FixedDepositPage() {
       else if (fdFilterType === '6 Months') backendFilter = '6_MONTHS';
       else if (fdFilterType === '1 Year') backendFilter = '1_YEAR';
       else if (fdFilterType === '3 Years') backendFilter = '3_YEARS';
-      else backendFilter = ''; // for 'All'
+      else backendFilter = '';
 
       const queryParams = new URLSearchParams({
         filterType: backendFilter,
@@ -141,7 +142,6 @@ export default function FixedDepositPage() {
 
       const data = await response.json();
 
-      // Group by fd_id and concatenate customer_names for joint accounts
       const groupedData = data.reduce((acc: FDDetails[], current: FDDetails) => {
         const existing = acc.find(f => f.fd_id === current.fd_id);
         if (existing) {
@@ -175,7 +175,6 @@ export default function FixedDepositPage() {
     const { name, value } = e.target;
     setCreateForm({ ...createForm, [name]: value });
     
-    // Reset account holders when account number changes
     if (name === 'accountNumber') {
       setAccountHolders([]);
     }
@@ -239,7 +238,6 @@ export default function FixedDepositPage() {
       const data = await response.json();
       alert(`✓ Fixed Deposit created successfully!\n\nFD Number: ${data.fd.fd_id}\nAmount: LKR ${parseFloat(data.fd.amount).toFixed(2)}\nInterest Rate: ${data.fd.interest_rate}%\nMonthly Interest: LKR ${data.fd.monthly_interest}\n\nReference: ${data.transaction.reference_number}`);
       
-      // Reset form
       setCreateForm({
         accountNumber: '',
         amount: '',
@@ -247,7 +245,6 @@ export default function FixedDepositPage() {
       });
       setAccountHolders([]);
 
-      // Switch to search tab to view the created FD
       setTimeout(() => {
         setActiveTab('search');
         fetchFDs();
@@ -284,7 +281,6 @@ export default function FixedDepositPage() {
       const data = await response.json();
       alert(`✓ FD renewed successfully!\n\nOld FD: ${fdId}\nNew FD: ${data.new_fd.fd_id}\nAmount: LKR ${parseFloat(data.new_fd.amount).toFixed(2)}\nNew Interest Rate: ${data.new_fd.interest_rate}%`);
       
-      // Refresh list
       fetchFDs();
     } catch (err: any) {
       alert(`✗ Error: ${err.message}`);
@@ -318,7 +314,6 @@ export default function FixedDepositPage() {
       const data = await response.json();
       alert(`✓ FD closed successfully!\n\nFD Number: ${fdId}\nPrincipal Returned: LKR ${data.principal_returned}\nPending Interest: LKR ${data.pending_interest_paid}\nTotal Returned: LKR ${data.total_returned}`);
       
-      // Refresh list
       fetchFDs();
     } catch (err: any) {
       alert(`✗ Error: ${err.message}`);
@@ -396,7 +391,6 @@ export default function FixedDepositPage() {
     });
   };
 
-  // New: Fetch interest history for printing
   const fetchInterestHistory = async (fdId: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/fixed-deposit/${fdId}/interest-history`, {
@@ -417,7 +411,6 @@ export default function FixedDepositPage() {
     }
   };
 
-  // Toggle FD history display
   const toggleFDHistory = async (fdId: string) => {
     setExpandedFDs(prev => ({ ...prev, [fdId]: !prev[fdId] }));
 
@@ -446,12 +439,11 @@ export default function FixedDepositPage() {
     }
   };
 
-  // New: Handle print button click
   const handlePrint = async (fd: FDDetails) => {
     const history = await fetchInterestHistory(fd.fd_id);
     setPrintFD(fd);
     setPrintHistory(history);
-    setTimeout(() => window.print(), 300); // Allow time for state update and render
+    setTimeout(() => window.print(), 300);
   };
 
   return (
@@ -460,7 +452,6 @@ export default function FixedDepositPage() {
         <div className="mx-auto px-8 py-6 max-w-7xl">
           <Header activeTab="fixed-deposit" />
 
-          {/* Tab Navigation */}
           <div className="mb-6 border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button
@@ -483,11 +474,8 @@ export default function FixedDepositPage() {
           </div>
 
           <div className="bg-white rounded-lg border border-gray-200 p-8">
-            
-            {/* Search & Manage Tab */}
             {activeTab === 'search' && (
               <div className="flex flex-col h-[calc(100vh-270px)]">
-                {/* Sticky Header Section */}
                 <div className="bg-white sticky top-0 space-y-4">
                   <div className="flex items-center justify-between">
                     <h2 className="text-sm font-medium text-gray-600">Fixed Deposit Lookup</h2>
@@ -496,7 +484,6 @@ export default function FixedDepositPage() {
                     </span>
                   </div>
 
-                  {/* Filter Buttons */}
                   <div className="flex flex-wrap gap-2">
                     {filterTypes.map((type) => (
                       <Button
@@ -510,7 +497,6 @@ export default function FixedDepositPage() {
                     ))}
                   </div>
 
-                  {/* Search Bar */}
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
                       value={fdSearchField}
@@ -531,7 +517,6 @@ export default function FixedDepositPage() {
                   </div>
                 </div>
 
-                {/* Scrollable FDs List */}
                 <div className="flex-1 overflow-y-auto mt-4 pr-2">
                   {loading && (
                     <div className="flex justify-center items-center py-8">
@@ -624,7 +609,6 @@ export default function FixedDepositPage() {
                                   </p>
                                 </div>
 
-                                {/* Interest Details */}
                                 <div className="mt-3 text-xs text-gray-700">
                                   <p className="font-medium mb-1">Interest Details:</p>
                                   <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
@@ -655,10 +639,16 @@ export default function FixedDepositPage() {
                                         ) : fdHistory[fd.fd_id] && fdHistory[fd.fd_id].length > 0 ? (
                                           <div className="grid gap-x-4 gap-y-1 text-[11px] text-gray-600 flex-1">
                                             <h5 className="font-semibold text-gray-800 mb-2 text-sm">Interest Payment History</h5>
+                                            <div className="grid grid-cols-3 gap-4 text-xs font-medium text-gray-800 mb-1">
+                                              <span>Date</span>
+                                              <span>Processed By</span>
+                                              <span className="text-right">Amount</span>
+                                            </div>
                                             {fdHistory[fd.fd_id].map((hist: any, index: number) => (
-                                              <div key={index} className="flex justify-between items-center text-xs text-gray-600 border-b border-gray-100 pb-1">
+                                              <div key={index} className="grid grid-cols-3 gap-4 text-xs text-gray-600 border-b border-gray-100 pb-1">
                                                 <span>{formatDate(hist.time_date_stamp)}</span>
-                                                <span className="font-medium">{formatCurrency(hist.amount)}</span>
+                                                <span>{hist.employee_name || (hist.transaction_type === 'FD_INTEREST' ? 'System' : 'N/A')}</span>
+                                                <span className="text-right font-medium">{formatCurrency(hist.amount)}</span>
                                               </div>
                                             ))}
                                           </div>
@@ -698,7 +688,7 @@ export default function FixedDepositPage() {
                                   type="button" 
                                   variant="secondary"
                                   className="whitespace-nowrap"
-                                  onClick={() => handlePrint(fd)}  // Updated to handlePrint
+                                  onClick={() => handlePrint(fd)}
                                   disabled={loading}
                                 >
                                   Print
@@ -714,7 +704,6 @@ export default function FixedDepositPage() {
               </div>
             )}
 
-            {/* Create New FD Tab */}
             {activeTab === 'create' && (
               <div className="space-y-6">
                 <div>
@@ -797,7 +786,6 @@ export default function FixedDepositPage() {
                     </div>
 
                     <div className="space-y-6">
-                      {/* FD Terms Information */}
                       <div className="bg-green-50 p-6 rounded-lg border border-green-200">
                         <h4 className="font-semibold text-gray-800 mb-3">Fixed Deposit Terms</h4>
                         <div className="text-sm text-gray-700 space-y-2">
@@ -813,7 +801,6 @@ export default function FixedDepositPage() {
                         </div>
                       </div>
 
-                      {/* Maturity Calculation */}
                       {createForm.amount && createForm.term && (
                         <div className="bg-green-50 p-6 rounded-lg border border-green-200">
                           <h4 className="font-semibold text-gray-800 mb-3">Maturity Calculation</h4>
@@ -875,7 +862,6 @@ export default function FixedDepositPage() {
         </div>
       </main>
 
-      {/* New: Printable area (hidden normally, shown on print) */}
       <div className="hidden print:block">
         {printFD && (
           <FDStatementPrint 

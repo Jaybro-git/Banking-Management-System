@@ -42,10 +42,27 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [expandedTxns, setExpandedTxns] = useState<{ [key: string]: boolean }>({});
   const [printData, setPrintData] = useState<any>(null);
   const [total, setTotal] = useState(0);
+  const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
+
+  // New state for date range
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch user');
+        const data = await res.json();
+        setCurrentEmployeeId(data.employee_id);
+      } catch (err) {
+        console.error('Error fetching user:', err);
+      }
+    };
+
+    fetchUser();
     fetchTransactions();
   }, []);
 
@@ -66,7 +83,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       if (data.error) {
         console.error('Error fetching transactions:', data.error);
       } else {
-        // Sort by date descending
         const sorted = data.sort((a: Transaction, b: Transaction) => 
           new Date(b.time_date_stamp).getTime() - new Date(a.time_date_stamp).getTime()
         );
@@ -90,7 +106,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    // Add 5 hours 30 minutes for Sri Lanka time
     date.setHours(date.getHours() + 5);
     date.setMinutes(date.getMinutes() + 30);
 
@@ -173,38 +188,56 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   };
 
   const filteredTransactions = transactions.filter((txn) => {
-    // Filter by type
-    if (filterType !== "All") {
+    let matchesFilter = true;
+
+    // Type filters
+    if (filterType === "Processed by me") {
+      matchesFilter = !!currentEmployeeId && txn.employee_id === currentEmployeeId;
+    } else if (filterType !== "All") {
       if (filterType === "Deposit" && !['DEPOSIT', 'INITIAL', 'TRANSFER_IN'].includes(txn.transaction_type)) {
-        return false;
+        matchesFilter = false;
       }
       if (filterType === "Withdrawal" && !['WITHDRAWAL', 'TRANSFER_OUT'].includes(txn.transaction_type)) {
-        return false;
+        matchesFilter = false;
       }
       if (filterType === "Transfer" && !['TRANSFER_IN', 'TRANSFER_OUT'].includes(txn.transaction_type)) {
-        return false;
+        matchesFilter = false;
       }
       if (filterType === "FD Interest" && txn.transaction_type !== 'FD_INTEREST') {
-        return false;
+        matchesFilter = false;
       }
       if (filterType === "Savings Interest" && txn.transaction_type !== 'SAVINGS_INTEREST') {
-        return false;
+        matchesFilter = false;
       }
     }
 
-    // Filter by search
-    if (!searchQuery) return true;
+    if (!matchesFilter) return false;
+
+    // Search filters
     const query = searchQuery.toLowerCase();
 
+    if (searchField === "date") {
+      const txnDate = new Date(txn.time_date_stamp);
+      let afterStart = true;
+      if (startDate) {
+        afterStart = txnDate >= new Date(`${startDate}T00:00:00`);
+      }
+      let beforeEnd = true;
+      if (endDate) {
+        beforeEnd = txnDate <= new Date(`${endDate}T23:59:59.999`);
+      }
+      return afterStart && beforeEnd;
+    }
+
+    if (!searchQuery) return true;
+
     switch (searchField) {
+      case "customer":
+        return txn.customer_name?.toLowerCase().includes(query) || false;
       case "account":
         return txn.account_id.toLowerCase().includes(query);
       case "ref":
         return txn.reference_number.toLowerCase().includes(query);
-      case "date":
-        return txn.time_date_stamp.includes(query);
-      case "customer":
-        return txn.customer_name?.toLowerCase().includes(query) || false;
       default:
         return true;
     }
@@ -213,17 +246,17 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   return (
     <div className="flex flex-col h-[calc(100vh-135px)]">
       {/* Sticky Header Section */}
-      <div className="bg-white sticky top-0 space-y-4 z-20">
+      <div className="bg-white sticky top-0 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-600">Transaction History</h2>
+          <h2 className="text-sm font-medium text-gray-600">Transaction Lookup</h2>
           <span className="text-xs text-gray-400">
-            {filteredTransactions.length} of {total} {total === 1 ? 'transaction' : 'transactions'}
+            {total} {total === 1 ? 'transaction' : 'transactions'} found
           </span>
         </div>
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-2">
-          {["All", "Deposit", "Withdrawal", "Transfer", "FD Interest", "Savings Interest"].map((type) => (
+          {['All', 'Deposit', 'Withdrawal', 'Transfer', 'FD Interest', 'Savings Interest', 'Processed by me'].map((type) => (
             <Button
               key={type}
               variant="filter"
@@ -239,33 +272,43 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         <div className="flex flex-wrap gap-2 items-center">
           <select
             value={searchField}
-            onChange={(e) => setSearchField(e.target.value as "ref" | "customer" | "account" | "date")}
+            onChange={(e) => setSearchField(e.target.value as "customer" | "account" | "ref" | "date")}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
-            <option value="customer">Customer</option>
+            <option value="customer">Customer Name</option>
             <option value="account">Account Number</option>
-            <option value="ref">Reference</option>
+            <option value="ref">Reference Number</option>
             <option value="date">Date</option>
           </select>
-          <input
-            type="text"
-            placeholder={`Search by ${searchField}`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <Button
-            variant="secondary"
-            onClick={fetchTransactions}
-            disabled={loading}
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </Button>
+          {searchField === "date" ? (
+            <div className="flex gap-2 flex-1">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          ) : (
+            <input
+              type="text"
+              placeholder={`Search by ${searchField}`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          )}
         </div>
       </div>
 
       {/* Scrollable Transactions List */}
-      <div className="flex-1 overflow-auto mt-4 pr-2">
+      <div className="flex-1 overflow-y-auto mt-4 pr-2">
         {loading && (
           <div className="flex justify-center items-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>

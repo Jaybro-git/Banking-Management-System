@@ -21,7 +21,6 @@ async function generateCustomerId(client = pool) {
 }
 
 // Generate unique account ID: [type_code]-[branch code]-[last 3 digits of employee_id]-[5 digit sequence]
-// Sequence is global per branch, employee, and account type
 async function generateAccountId(client = pool, accountTypeId, branchId, employeeId) {
   const typeResult = await client.query(
     'SELECT type_code FROM account_type WHERE account_type_id = $1',
@@ -171,6 +170,7 @@ router.post('/customer', authenticateToken, async (req, res) => {
 // Open new account
 router.post('/account/open', authenticateToken, async (req, res) => {
   const { customerId, accountTypeId, initialDeposit } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!customerId || !accountTypeId || !initialDeposit) {
     return res.status(400).json({ error: 'Customer ID, account type, and initial deposit are required' });
@@ -181,7 +181,7 @@ router.post('/account/open', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const branchId = await getBranchIdByEmployee(req.user.employee_id, client);
+    const branchId = await getBranchIdByEmployee(employeeId, client);
 
     const customerCheck = await client.query(
       'SELECT status FROM customer WHERE customer_id = $1',
@@ -200,9 +200,8 @@ router.post('/account/open', authenticateToken, async (req, res) => {
     const deposit = parseFloat(initialDeposit);
     if (deposit < minBalance) throw new Error(`Initial deposit must be at least ${minBalance}`);
 
-    const accountId = await generateAccountId(client, accountTypeId, branchId, req.user.employee_id);
+    const accountId = await generateAccountId(client, accountTypeId, branchId, employeeId);
 
-    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
@@ -223,7 +222,8 @@ router.post('/account/open', authenticateToken, async (req, res) => {
       client,
       accountId,
       deposit,
-      'Initial deposit for account opening'
+      'Initial deposit for account opening',
+      employeeId
     );
 
     await client.query('COMMIT');
@@ -258,7 +258,7 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
     phoneNumber, email, address, accountTypeId, initialDeposit
   } = req.body;
 
-  const agentId = req.user.employee_id;
+  const employeeId = req.user.employee_id;
 
   if (!firstName || !lastName || !nicNumber || !dateOfBirth ||
       !gender || !phoneNumber || !email || !address || !accountTypeId || !initialDeposit) {
@@ -270,7 +270,7 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
   try {
     await client.query('BEGIN');
 
-    const branchId = await getBranchIdByEmployee(agentId, client);
+    const branchId = await getBranchIdByEmployee(employeeId, client);
 
     let customerId;
     const existingCustomer = await client.query(
@@ -291,7 +291,7 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
           date_of_birth, gender, phone_number, email, address,
           registration_date, status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, 'ACTIVE')`,
-        [customerId, agentId, firstName, lastName, nicNumber, dateOfBirth,
+        [customerId, employeeId, firstName, lastName, nicNumber, dateOfBirth,
           gender.toUpperCase(), phoneNumber, email, address]
       );
     }
@@ -306,9 +306,8 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
     const deposit = parseFloat(initialDeposit);
     if (deposit < minBalance) throw new Error(`Initial deposit must be at least ${minBalance}`);
 
-    const accountId = await generateAccountId(client, accountTypeId, branchId, agentId);
+    const accountId = await generateAccountId(client, accountTypeId, branchId, employeeId);
 
-    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
@@ -329,7 +328,8 @@ router.post('/account/register-and-open', authenticateToken, async (req, res) =>
       client,
       accountId,
       deposit,
-      'Initial deposit for new account'
+      'Initial deposit for new account',
+      employeeId
     );
 
     await client.query('COMMIT');
@@ -370,7 +370,7 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
     initialDeposit
   } = req.body;
 
-  const agentId = req.user.employee_id;
+  const employeeId = req.user.employee_id;
 
   if (!customers || !Array.isArray(customers) || customers.length < 2 || customers.length > 6) {
     return res.status(400).json({ error: 'Joint accounts require 2-6 customers' });
@@ -385,7 +385,7 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const branchId = await getBranchIdByEmployee(agentId, client);
+    const branchId = await getBranchIdByEmployee(employeeId, client);
 
     // Validate account type
     const accountType = await client.query(
@@ -450,7 +450,7 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
               date_of_birth, gender, phone_number, email, address,
               registration_date, status
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, 'ACTIVE')`,
-            [customerId, agentId, firstName, lastName, nicNumber, dateOfBirth,
+            [customerId, employeeId, firstName, lastName, nicNumber, dateOfBirth,
               gender.toUpperCase(), phoneNumber, email, address]
           );
         }
@@ -480,10 +480,9 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
     }
 
     // Generate joint account ID
-    const accountId = await generateAccountId(client, accountTypeId, branchId, agentId);
+    const accountId = await generateAccountId(client, accountTypeId, branchId, employeeId);
 
     // Create the joint account
-    // UPDATED: Set initial current_balance to 0 (let transaction add the deposit)
     await client.query(
       `INSERT INTO account (
         account_id, branch_id, account_type_id, 
@@ -507,7 +506,8 @@ router.post('/account/joint/open', authenticateToken, async (req, res) => {
       client,
       accountId,
       deposit,
-      `Initial deposit for joint account (${customerIds.length} holders)`
+      `Initial deposit for joint account (${customerIds.length} holders)`,
+      employeeId
     );
 
     await client.query('COMMIT');

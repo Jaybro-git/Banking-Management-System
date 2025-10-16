@@ -1,4 +1,3 @@
-// backend/routes/fixed-deposit.js
 const express = require('express');
 const pool = require('../db/index');
 const authenticateToken = require('../middleware/auth');
@@ -361,6 +360,7 @@ router.get('/:fdId', authenticateToken, async (req, res) => {
 // Create new Fixed Deposit
 router.post('/create', authenticateToken, async (req, res) => {
   const { accountId, amount, term } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!accountId || !amount || !term) {
     return res.status(400).json({ error: 'Account ID, amount, and term are required' });
@@ -453,8 +453,8 @@ router.post('/create', authenticateToken, async (req, res) => {
 
     // Use record_withdrawal function to deduct amount from savings account
     const withdrawalResult = await client.query(
-      'SELECT * FROM record_withdrawal($1, $2, $3, $4)',
-      [accountId, fdAmount, `Fixed Deposit opened - ${fdId}`, 'WITHDRAWAL']
+      'SELECT * FROM record_withdrawal($1, $2, $3, $4, $5)',
+      [accountId, fdAmount, `Fixed Deposit opened - ${fdId}`, 'WITHDRAWAL', employeeId]
     );
 
     const transaction = withdrawalResult.rows[0];
@@ -492,6 +492,7 @@ router.post('/create', authenticateToken, async (req, res) => {
 router.post('/renew/:fdId', authenticateToken, async (req, res) => {
   const { fdId } = req.params;
   const { term } = req.body;
+  const employeeId = req.user.employee_id;
 
   if (!term) {
     return res.status(400).json({ error: 'Term is required for renewal' });
@@ -576,6 +577,7 @@ router.post('/renew/:fdId', authenticateToken, async (req, res) => {
 // Close Fixed Deposit (using database function)
 router.post('/close/:fdId', authenticateToken, async (req, res) => {
   const { fdId } = req.params;
+  const employeeId = req.user.employee_id;
 
   const client = await pool.connect();
 
@@ -584,8 +586,8 @@ router.post('/close/:fdId', authenticateToken, async (req, res) => {
 
     // Use the close_fd database function
     const result = await client.query(
-      'SELECT close_fd($1) as result',
-      [fdId]
+      'SELECT close_fd($1, $2) as result',
+      [fdId, employeeId]
     );
 
     const closureResult = result.rows[0].result;
@@ -681,19 +683,20 @@ async function payAllFDInterests() {
         ? new Date(lastPaymentResult.rows[0].time_date_stamp) 
         : new Date(fd.start_date);
       
-      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24)); // 1000 * 60
+      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24)); //
       
-      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >= 1
-        // Use record_deposit function with FD_INTEREST type
+      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >=1
+        // Use record_deposit function with FD_INTEREST type and null employee_id
         const balanceBefore = parseFloat(fd.current_balance);
         
         await client.query(
-          'SELECT * FROM record_deposit($1, $2, $3, $4, $5)',
+          'SELECT * FROM record_deposit($1, $2, $3, $4, $5, $6)',
           [
             fd.account_id,
             monthlyInterest,
             `Automatic Monthly FD Interest - ${fd.fd_id}`,
             'FD_INTEREST',
+            null, // employee_id set to null for automatic interest
             balanceBefore
           ]
         );
