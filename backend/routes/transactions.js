@@ -657,6 +657,119 @@ router.get('/:transactionId/full', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /daily-trends (with optional branchId query param)
+router.get('/daily-trends', authenticateToken, async (req, res) => {
+  const { branchId } = req.query;
+
+  try {
+    const query = `
+      WITH days AS (
+        SELECT generate_series(
+          DATE_TRUNC('month', CURRENT_DATE),
+          CURRENT_DATE,
+          '1 day'
+        )::date AS day
+      ),
+      trends AS (
+        SELECT 
+          DATE(t.time_date_stamp) AS day,
+          SUM(CASE WHEN transaction_type IN ('DEPOSIT', 'INITIAL', 'TRANSFER_IN', 'FD_INTEREST', 'SAVINGS_INTEREST') THEN amount ELSE 0 END) as deposits,
+          SUM(CASE WHEN transaction_type IN ('WITHDRAWAL', 'TRANSFER_OUT') THEN amount ELSE 0 END) as withdrawals
+        FROM transaction t
+        JOIN account a ON t.account_id = a.account_id
+        ${branchId ? 'WHERE a.branch_id = $1' : ''}
+        GROUP BY DATE(t.time_date_stamp)
+      )
+      SELECT 
+        TO_CHAR(d.day, 'DD Mon') as label,
+        COALESCE(tr.deposits, 0) as deposits,
+        COALESCE(tr.withdrawals, 0) as withdrawals
+      FROM days d
+      LEFT JOIN trends tr ON d.day = tr.day
+      ORDER BY d.day ASC
+    `;
+    const params = branchId ? [branchId] : [];
+    const result = await pool.query(query, params);
+    const labels = result.rows.map(r => r.label);
+    const deposits = result.rows.map(r => parseFloat(r.deposits));
+    const withdrawals = result.rows.map(r => parseFloat(r.withdrawals));
+    res.json({ labels, deposits, withdrawals });
+  } catch (err) {
+    console.error('Error fetching daily trends:', err);
+    res.status(500).json({ error: 'Failed to fetch daily trends' });
+  }
+});
+
+// Existing routes (for reference, ensure these are included if not already present)
+// GET /daily-summary (with optional branchId query param)
+router.get('/daily-summary', authenticateToken, async (req, res) => {
+  const { branchId } = req.query;
+
+  try {
+    let query = `
+      SELECT 
+        COALESCE(SUM(CASE WHEN transaction_type IN ('DEPOSIT', 'INITIAL', 'TRANSFER_IN', 'FD_INTEREST', 'SAVINGS_INTEREST') THEN amount ELSE 0 END), 0) as deposits,
+        COALESCE(SUM(CASE WHEN transaction_type IN ('WITHDRAWAL', 'TRANSFER_OUT') THEN amount ELSE 0 END), 0) as withdrawals
+      FROM transaction t
+      JOIN account a ON t.account_id = a.account_id
+      WHERE DATE(t.time_date_stamp) = CURRENT_DATE
+    `;
+    const params = [];
+    if (branchId) {
+      query += ` AND a.branch_id = $1`;
+      params.push(branchId);
+    }
+    const result = await pool.query(query, params);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching daily summary:', err);
+    res.status(500).json({ error: 'Failed to fetch daily summary' });
+  }
+});
+
+// GET /monthly-trends (with optional branchId query param)
+router.get('/monthly-trends', authenticateToken, async (req, res) => {
+  const { branchId } = req.query;
+
+  try {
+    const query = `
+      WITH months AS (
+        SELECT generate_series(
+          DATE_TRUNC('month', CURRENT_DATE - INTERVAL '6 months'),
+          DATE_TRUNC('month', CURRENT_DATE),
+          '1 month'
+        )::date AS month
+      ),
+      trends AS (
+        SELECT 
+          DATE_TRUNC('month', t.time_date_stamp)::date AS month,
+          SUM(CASE WHEN transaction_type IN ('DEPOSIT', 'INITIAL', 'TRANSFER_IN', 'FD_INTEREST', 'SAVINGS_INTEREST') THEN amount ELSE 0 END) as deposits,
+          SUM(CASE WHEN transaction_type IN ('WITHDRAWAL', 'TRANSFER_OUT') THEN amount ELSE 0 END) as withdrawals
+        FROM transaction t
+        JOIN account a ON t.account_id = a.account_id
+        ${branchId ? 'WHERE a.branch_id = $1' : ''}
+        GROUP BY DATE_TRUNC('month', t.time_date_stamp)
+      )
+      SELECT 
+        TO_CHAR(m.month, 'Mon') as label,
+        COALESCE(tr.deposits, 0) as deposits,
+        COALESCE(tr.withdrawals, 0) as withdrawals
+      FROM months m
+      LEFT JOIN trends tr ON m.month = tr.month
+      ORDER BY m.month ASC
+    `;
+    const params = branchId ? [branchId] : [];
+    const result = await pool.query(query, params);
+    const labels = result.rows.map(r => r.label);
+    const deposits = result.rows.map(r => parseFloat(r.deposits));
+    const withdrawals = result.rows.map(r => parseFloat(r.withdrawals));
+    res.json({ labels, deposits, withdrawals });
+  } catch (err) {
+    console.error('Error fetching monthly trends:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly trends' });
+  }
+});
+
 // Export the router with updated endpoints
 module.exports = {
   router,

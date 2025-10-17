@@ -545,6 +545,12 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
                       ))}
                     </tbody>
                   </table>
+                  {txns.length > 0 && (
+                    <>
+                      <p className="mt-2"><strong>Balance Before Period:</strong> {formatCurrency(txns[0].balanceBefore)}</p>
+                      <p><strong>Balance After Period:</strong> {formatCurrency(txns[txns.length - 1].balanceAfter)}</p>
+                    </>
+                  )}
                 </div>
               ))}
           </div>

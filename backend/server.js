@@ -18,6 +18,7 @@ const { router: transactionsRouter } = require('./routes/transactions');
 const customerLookupRoutes = require('./routes/customerLookup');
 const fixedDepositRoutes = require('./routes/fixed-deposit');
 const profileRouter = require('./routes/profile');
+const { payMonthlyInterest } = require('./routes/interestScheduler');
 
 app.use('/api/admin-check', adminCheckRoutes);
 app.use('/api/branches', branchRoutes);

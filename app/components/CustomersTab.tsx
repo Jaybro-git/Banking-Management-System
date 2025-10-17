@@ -292,7 +292,7 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
                         className={`px-2 py-0.5 text-xs rounded-full ${
                           customer.customer_status === 'ACTIVE'
                             ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-gray-100 text-gray-800'
+                            : 'bg-red-100 text-red-800'
                         }`}
                       >
                         {customer.customer_status}
@@ -335,7 +335,7 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
                                 className={`px-2 py-0.5 text-[10px] rounded-full ${
                                   acc.account_status === 'ACTIVE'
                                     ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
+                                    : 'bg-red-100 text-red-800'
                                 }`}
                               >
                                 {acc.account_status}

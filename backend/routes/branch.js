@@ -1,3 +1,4 @@
+// branch.js
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/index');
@@ -95,6 +96,47 @@ router.get('/by-employee/:employee_id', async (req, res) => {
     res.json({ branch: result.rows[0] });
   } catch (err) {
     console.error('Error fetching branch by employee:', err);
+    res.status(500).json({ error: 'Database error', details: err.message });
+  }
+});
+
+// Get branch details (agents, customers, accounts)
+router.get('/:branchId/details', async (req, res) => {
+  const { branchId } = req.params;
+
+  try {
+    // Total agents: active agents in this branch
+    const agentsResult = await pool.query(
+      `SELECT COUNT(*) 
+       FROM employee 
+       WHERE branch_id = $1 AND role = 'AGENT' AND status = 'ACTIVE'`,
+      [branchId]
+    );
+    const agents = parseInt(agentsResult.rows[0].count, 10);
+
+    // Total customers: distinct active customers with active accounts in this branch
+    const customersResult = await pool.query(
+      `SELECT COUNT(DISTINCT c.customer_id)
+       FROM customer c
+       JOIN account_holder ah ON ah.customer_id = c.customer_id
+       JOIN account a ON a.account_id = ah.account_id
+       WHERE a.branch_id = $1 AND c.status = 'ACTIVE' AND a.status = 'ACTIVE'`,
+      [branchId]
+    );
+    const customers = parseInt(customersResult.rows[0].count, 10);
+
+    // Total accounts: active accounts in this branch
+    const accountsResult = await pool.query(
+      `SELECT COUNT(*) 
+       FROM account 
+       WHERE branch_id = $1 AND status = 'ACTIVE'`,
+      [branchId]
+    );
+    const accounts = parseInt(accountsResult.rows[0].count, 10);
+
+    res.json({ agents, customers, accounts });
+  } catch (err) {
+    console.error('Error fetching branch details:', err);
     res.status(500).json({ error: 'Database error', details: err.message });
   }
 });
