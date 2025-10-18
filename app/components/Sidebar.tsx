@@ -48,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className={`mt-4 p-2 rounded-full hover:bg-emerald-50 text-green-800 transition-all duration-200 ${
+          className={`mt-4 p-2 rounded-full hover:bg-emerald-50 text-green-800 transition-all duration-200 cursor-pointer ${
             isSidebarOpen ? "ml-2 self-center" : "mx-auto"
           }`}
           style={{ alignSelf: "center" }}
@@ -75,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as typeof activeTab)}
-            className={`w-full px-4 py-2 rounded-lg font-medium text-left transition-colors duration-200 flex items-center space-x-2 ${
+            className={`w-full px-4 py-2 rounded-lg font-medium text-left transition-colors duration-200 cursor-pointer flex items-center space-x-2 ${
               activeTab === tab.key
                 ? "bg-emerald-100 text-green-800"
                 : "text-gray-600 hover:bg-emerald-50 hover:text-emerald-600"

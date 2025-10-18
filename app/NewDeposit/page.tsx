@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Button } from '@/app/components/ui/Button';
 import { TextInput } from '@/app/components/ui/TextInput';
+import DepositReceiptPrint from '@/app/components/DepositReceiptPrint';
 
 interface HeaderProps {
   activeTab: string;
@@ -18,66 +19,157 @@ const Header: React.FC<HeaderProps> = ({ activeTab }) => {
       </div>
       <div className="flex items-center space-x-4">
         <Link href="/" passHref>
-        <Button type="button" variant="danger" size="md" className="w-full mt-6">
+          <Button type="button" variant="danger" size="md" className="w-full mt-6">
             Cancel
-        </Button>
+          </Button>
         </Link>
       </div>
     </header>
   );
 };
 
+interface Holder {
+  customerName: string;
+  nic: string;
+  phone: string;
+  email: string;
+}
+
+interface AccountInfo {
+  holders: Holder[];
+  accountType: string;
+  currentBalance: string;
+  isValid: boolean;
+}
+
+interface Transaction {
+  transactionId: string;
+  referenceNumber: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  time_date_stamp: string;
+  employee_id?: string; // Added to handle employee_id from backend
+}
+
+interface Account {
+  account_id: string;
+  account_type_name: string;
+}
+
+interface DepositHolder {
+  first_name: string;
+  last_name: string;
+  nic_number: string;
+  phone_number: string;
+  email: string;
+}
+
+interface DepositAccountInfo {
+  account: Account;
+  holders: DepositHolder[];
+}
+
+interface DepositResult {
+  transaction: Transaction;
+  accountInfo: DepositAccountInfo;
+  depositAmount: string;
+  remarks: string;
+}
+
 export default function NewDepositsPage() {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+
   const [form, setForm] = useState({
     accountNumber: '',
     depositAmount: '',
-    depositType: 'savings',
-    paymentMethod: 'cash',
-    chequeNumber: '',
-    chequeBank: '',
-    chequeDate: '',
-    remarks: '',
-    receiptNumber: ''
+    remarks: ''
   });
 
-  const [accountInfo, setAccountInfo] = useState({
-    customerName: '',
+  const [accountInfo, setAccountInfo] = useState<AccountInfo>({
+    holders: [],
     accountType: '',
     currentBalance: '',
     isValid: false
   });
 
+  const [depositResult, setDepositResult] = useState<DepositResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-    
-    if (e.target.name === 'accountNumber' && e.target.value.length >= 10) {
-      // Mock account validation - in real app, this would be an API call
-      setAccountInfo({
-        customerName: 'John Doe',
-        accountType: 'Savings Account',
-        currentBalance: '45,250.00',
-        isValid: true
+  };
+
+  const validateAccount = async () => {
+    if (form.accountNumber.length < 10) {
+      setError('Account number must be at least 10 characters');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/transactions/account/${form.accountNumber}/info`, {
+        credentials: 'include'
       });
-    } else if (e.target.name === 'accountNumber') {
+      const data = await res.json();
+      if (data.error) {
+        setAccountInfo({
+          holders: [],
+          accountType: '',
+          currentBalance: '',
+          isValid: false
+        });
+        setError(data.error);
+      } else {
+        setAccountInfo({
+          holders: data.holders,
+          accountType: data.accountType,
+          currentBalance: data.currentBalance,
+          isValid: true
+        });
+      }
+    } catch (err) {
+      setError('Failed to fetch account info');
       setAccountInfo({
-        customerName: '',
+        holders: [],
         accountType: '',
         currentBalance: '',
         isValid: false
       });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert(
-      `Deposit of LKR ${form.depositAmount} processed for account ${form.accountNumber} (${accountInfo.customerName})`
-    );
-  };
-
-  const generateReceiptNumber = () => {
-    const receiptNum = 'DEP' + Date.now().toString().slice(-8);
-    setForm({ ...form, receiptNumber: receiptNum });
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/transactions/deposit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', // Ensures JWT token is sent for employee_id extraction on backend
+        body: JSON.stringify({
+          accountId: form.accountNumber,
+          amount: parseFloat(form.depositAmount),
+          description: form.remarks || 'Deposit'
+        })
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setDepositResult(data);
+        alert('Deposit processed successfully!');
+      }
+    } catch (err) {
+      setError('Failed to process deposit');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -87,38 +179,37 @@ export default function NewDepositsPage() {
         
         {/* Form Content */}
         <div className="bg-white rounded-lg border border-gray-200 p-8">
+          {error && <p className="text-red-500 mb-4">{error}</p>}
           <form onSubmit={handleSubmit}>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Account & Deposit Information</h2>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               
               {/* Left Column - Account & Deposit Details */}
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Account & Deposit Information</h2>
-                </div>
-
+                
                 {/* Account Number */}
-                <div>
-                  <TextInput
-                    label="Account Number"
-                    name="accountNumber"
-                    value={form.accountNumber}
-                    onChange={handleChange}
-                    required
-                    placeholder="Enter customer account number"
-                  />
-                </div>
-
-                {/* Account Info Display */}
-                {accountInfo.isValid && (
-                  <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-                    <h3 className="font-semibold text-gray-800 mb-3">Account Details</h3>
-                    <div className="space-y-2 text-sm">
-                      <div><strong>Customer Name:</strong> {accountInfo.customerName}</div>
-                      <div><strong>Account Type:</strong> {accountInfo.accountType}</div>
-                      <div><strong>Current Balance:</strong> LKR {accountInfo.currentBalance}</div>
-                    </div>
+                <div className="flex items-end space-x-4">
+                  <div className="flex-1">
+                    <TextInput
+                      label="Account Number"
+                      name="accountNumber"
+                      value={form.accountNumber}
+                      onChange={handleChange}
+                      required
+                      placeholder="Enter customer account number"
+                    />
                   </div>
-                )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={validateAccount}
+                    disabled={loading || form.accountNumber.length < 10}
+                  >
+                    {loading ? 'Checking...' : 'Check'}
+                  </Button>
+                </div>                
 
                 {/* Deposit Amount */}
                 <div>
@@ -130,114 +221,6 @@ export default function NewDepositsPage() {
                     required
                     placeholder="Enter deposit amount"
                   />
-                </div>
-
-                {/* Deposit Type */}
-                <div>
-                  <label className="block mb-2 text-gray-700 font-medium">Deposit Type</label>
-                  <select
-                    name="depositType"
-                    value={form.depositType}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="savings">Savings Deposit</option>
-                    <option value="current">Current Account Deposit</option>
-                    <option value="loan">Loan Payment</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                {/* New Balance Preview */}
-                {form.depositAmount && accountInfo.isValid && (
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h4 className="font-semibold text-gray-800 mb-2">Balance Preview</h4>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      <div><strong>Current Balance:</strong> LKR {accountInfo.currentBalance}</div>
-                      <div><strong>Deposit Amount:</strong> LKR {form.depositAmount}</div>
-                      <div className="pt-2 border-t"><strong>New Balance:</strong> LKR {(parseFloat(accountInfo.currentBalance.replace(/,/g, '')) + parseFloat(form.depositAmount || '0')).toLocaleString()}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Right Column - Payment & Transaction Details */}
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment & Transaction Details</h2>
-                </div>
-
-                {/* Payment Method */}
-                <div>
-                  <label className="block mb-2 text-gray-700 font-medium">Payment Method</label>
-                  <select
-                    name="paymentMethod"
-                    value={form.paymentMethod}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="transfer">Bank Transfer</option>
-                    <option value="card">Debit Card</option>
-                  </select>
-                </div>
-
-                {/* Cheque Details (conditional) */}
-                {form.paymentMethod === 'cheque' && (
-                  <div className="bg-yellow-50 p-4 rounded-lg space-y-4">
-                    <h4 className="font-semibold text-gray-800">Cheque Details</h4>
-                    <TextInput
-                      label="Cheque Number"
-                      name="chequeNumber"
-                      value={form.chequeNumber}
-                      onChange={handleChange}
-                      required
-                    />
-                    <TextInput
-                      label="Cheque Bank"
-                      name="chequeBank"
-                      value={form.chequeBank}
-                      onChange={handleChange}
-                      required
-                    />
-                    <div>
-                      <label className="block mb-1 text-gray-700">Cheque Date</label>
-                      <input
-                        type="date"
-                        name="chequeDate"
-                        value={form.chequeDate}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Receipt Number */}
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <TextInput
-                      label="Receipt Number"
-                      name="receiptNumber"
-                      value={form.receiptNumber}
-                      onChange={handleChange}
-                      required
-                      placeholder="Generate or enter receipt number"
-                    />
-                    <Button
-                      type="button"
-                      onClick={generateReceiptNumber}
-                      variant="secondary"
-                      size="md"
-                      className="mt-6"
-                    >
-                      Generate
-                    </Button>
-                  </div>
                 </div>
 
                 {/* Remarks */}
@@ -252,17 +235,39 @@ export default function NewDepositsPage() {
                     placeholder="Additional notes or remarks about this transaction..."
                   />
                 </div>
+              </div>
+
+              {/* Right Column - Payment & Transaction Details */}
+              <div className="space-y-6">
+
+                {/* Account Info Display */}
+                {accountInfo.isValid && (
+                  <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+                    <h3 className="font-semibold text-gray-800 mb-3">Account Details</h3>
+                    <div className="space-y-2 text-sm">
+                      <div><strong>Account Type:</strong> {accountInfo.accountType}</div>
+                      <div><strong>Current Balance:</strong> LKR {accountInfo.currentBalance}</div>
+                      <div><strong>Account Holders:</strong></div>
+                      {accountInfo.holders.map((holder, index) => (
+                        <div key={index} className="ml-4">
+                          <div><strong>Name:</strong> {holder.customerName}</div>
+                          <div><strong>NIC:</strong> {holder.nic}</div>
+                          <div><strong>Phone:</strong> {holder.phone}</div>
+                          <div><strong>Email:</strong> {holder.email}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Transaction Summary */}
                 {form.depositAmount && accountInfo.isValid && (
-                  <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
                     <h4 className="font-semibold text-gray-800 mb-3">Transaction Summary</h4>
                     <div className="text-sm text-gray-700 space-y-1">
-                      <div><strong>Customer:</strong> {accountInfo.customerName}</div>
                       <div><strong>Account:</strong> {form.accountNumber}</div>
                       <div><strong>Amount:</strong> LKR {form.depositAmount}</div>
-                      <div><strong>Method:</strong> {form.paymentMethod.charAt(0).toUpperCase() + form.paymentMethod.slice(1)}</div>
-                      <div><strong>Receipt:</strong> {form.receiptNumber || 'Not generated'}</div>
+                      <div><strong>Remarks:</strong> {form.remarks}</div>
                     </div>
                   </div>
                 )}
@@ -275,20 +280,48 @@ export default function NewDepositsPage() {
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={!depositResult || loading}
                   onClick={() => window.print()}
                 >
                   Print Receipt
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!accountInfo.isValid || !form.depositAmount || !form.receiptNumber}
-                  className={`bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 ${(!accountInfo.isValid || !form.depositAmount || !form.receiptNumber) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!accountInfo.isValid || !form.depositAmount || loading}
+                  className={`bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 ${(!accountInfo.isValid || !form.depositAmount || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  Process Deposit
+                  {loading ? 'Processing...' : 'Process Deposit'}
                 </Button>
               </div>
             </div>
           </form>
+
+          {depositResult && (
+            <div className="receipt mt-8">
+              <style>{`
+                @media print {
+                  body * {
+                    visibility: hidden;
+                  }
+                  .receipt, .receipt * {
+                    visibility: visible;
+                  }
+                  .receipt {
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                  }
+                }
+              `}</style>
+              <DepositReceiptPrint
+                transaction={depositResult.transaction}
+                accountInfo={depositResult.accountInfo}
+                depositAmount={depositResult.depositAmount}
+                remarks={depositResult.remarks}
+              />
+            </div>
+          )}
         </div>
       </div>
     </main>

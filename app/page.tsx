@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Cookies from "js-cookie"; // Import js-cookie
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,12 +16,12 @@ import {
 import {
   PiggyBank,
   BarChart2,
-  Headset,
   Banknote,
   UserPlus,
   Vault,
   Receipt,
-  Users,
+  User,
+  Building,
 } from "lucide-react";
 
 import { Sidebar } from "@/app/components/Sidebar";
@@ -42,65 +43,76 @@ ChartJS.register(
 );
 
 export default function AgentDashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">("overview");
+  // Initialize activeTab from cookie or default to "overview"
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">(() => {
+    const savedTab = Cookies.get("activeTab");
+    return savedTab && ["overview", "transactions", "customers"].includes(savedTab)
+      ? savedTab as "overview" | "transactions" | "customers"
+      : "overview";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [filterType, setFilterType] = useState<"All" | "Deposit" | "Withdrawal">("All");
+  const [filterType, setFilterType] = useState<string>("All");
   const [searchField, setSearchField] = useState<"customer" | "account" | "ref" | "date">("customer");
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [branch, setBranch] = useState<{ branch_id: string; branch_name: string } | null>(null);
 
-  type CustomerFilterType =
-    | "All"
-    | "Savings Accounts"
-    | "Joint Accounts"
-    | "Fixed Deposits"
-    | "Children's Accounts"
-    | "Teen Accounts"
-    | "Processed by Me";
-
-  type CustomerSearchField = "account" | "customer";
-
-  const [customerFilterType, setCustomerFilterType] = useState<CustomerFilterType>("All");
-  const [customerSearchField, setCustomerSearchField] = useState<CustomerSearchField>("account");
+  // Customer filters
+  const [customerFilterType, setCustomerFilterType] = useState<string>("All");
+  const [customerSearchField, setCustomerSearchField] = useState<string>("account");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
-  const transactions = [
-    { date: "2025-08-01", account: "SA-004-017-00023", type: "Deposit", amount: 5000, ref: "TXN9324", customer: "John Doe" },
-    { date: "2025-08-02", account: "SA-004-005-00008", type: "Withdrawal", amount: 2000, ref: "TXN9325", customer: "Jane Smith" },
-    { date: "2025-08-03", account: "SA-004-017-00056", type: "Deposit", amount: 3500, ref: "TXN9326", customer: "Alice Brown" },
-    { date: "2025-08-04", account: "SA-004-002-00028", type: "Withdrawal", amount: 1500, ref: "TXN9327", customer: "Bob Wilson" },
-  ];
+  // Save activeTab to cookie whenever it changes
+  useEffect(() => {
+    Cookies.set("activeTab", activeTab, { expires: 7 }); // Cookie expires in 7 days
+  }, [activeTab]);
 
-  const chartData = {
-    labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"],
-    datasets: [
-      {
-        label: "Deposits",
-        data: [12, 19, 14, 20, 25, 18, 22],
-        borderColor: "#10B981",
-        backgroundColor: "rgba(16, 185, 129, 0.2)",
-        tension: 0.4,
-        fill: true,
-      },
-      {
-        label: "Withdrawals",
-        data: [8, 15, 10, 12, 18, 14, 16],
-        borderColor: "#F59E0B",
-        backgroundColor: "rgba(245, 158, 11, 0.2)",
-        tension: 0.4,
-        fill: true,
-      },
-    ],
-  };
+  useEffect(() => {
+    const fetchCurrentEmployeeAndBranch = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${apiUrl}/api/profile/employee`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setEmployeeId(data.employee.employee_id);
+
+        if (data.employee.employee_id) {
+          const branchResponse = await fetch(`${apiUrl}/api/branches/by-employee/${data.employee.employee_id}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (branchResponse.ok) {
+            const branchData = await branchResponse.json();
+            setBranch(branchData.branch);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch current employee or branch:', err);
+      }
+    };
+    fetchCurrentEmployeeAndBranch();
+  }, []);
 
   const quickActions: ActionItem[] = [
-    { icon: <UserPlus className="w-7 h-7 text-green-600" />, title: "Open Account", description: "Open New Savings, Children, Teen, Joint, Fixed Deposit Accounts", href: "/OpenAccount" },
+    { icon: <UserPlus className="w-7 h-7 text-green-600" />, title: "Open Account", description: "Register Customers and Open New Accounts", href: "/OpenAccount" },
     { icon: <PiggyBank className="w-7 h-7 text-green-600" />, title: "New Deposit", description: "Create a New Customer Deposit Request", href: "/NewDeposit" },
     { icon: <Banknote className="w-7 h-7 text-green-600" />, title: "Withdrawal", description: "Process a Customer Withdrawal Request", href: "/Withdrawal" },
     { icon: <Vault className="w-7 h-7 text-green-600" />, title: "Fixed Deposit", description: "Manage Fixed Deposits and Interest Payments", href: "/FixedDeposit" },
-    { icon: <Users className="w-7 h-7 text-green-600" />, title: "Account Holders", description: "View and Manage Account Holders", href: "/Accounts" },
-    { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Transactions History", description: "View Transaction History for Accounts", href: "/Transactions" },
+    { icon: <Receipt className="w-7 h-7 text-green-600" />, title: "Fund Transfer", description: "Transfer Funds Between Accounts and Manage", href: "/Transfer" },
     { icon: <BarChart2 className="w-7 h-7 text-green-600" />, title: "View Reports", description: "Generate and View Detailed Reports on Transactions and Accounts", href: "/Reports" },
-    { icon: <Headset className="w-7 h-7 text-green-600" />, title: "Customer Support", description: "Assist Customers With Their Queries and Issues", href: "/test" },
+    { icon: <Building className="w-7 h-7 text-green-600" />, title: "Bank Details", description: "View and Manage Bank Branch Information", href: "/branches" },
+    { icon: <User className="w-7 h-7 text-green-600" />, title: "Agent Profile", description: "View and Edit Your Agent Profile and Personal Information", href: employeeId ? `/dashboard/employee/${employeeId}` : '/' },
   ];
 
   return (
@@ -117,10 +129,9 @@ export default function AgentDashboard() {
         }`}
       >
         <Header activeTab={activeTab} />
-        {activeTab === "overview" && <OverviewTab quickActions={quickActions} chartData={chartData} />}
+        {activeTab === "overview" && <OverviewTab quickActions={quickActions} branch={branch} />}
         {activeTab === "transactions" && (
           <TransactionsTab
-            transactions={transactions}
             filterType={filterType}
             setFilterType={setFilterType}
             searchField={searchField}
@@ -131,11 +142,10 @@ export default function AgentDashboard() {
         )}
         {activeTab === "customers" && (
           <CustomersTab
-            transactions={transactions}
-            customerFilterType={customerFilterType}
-            setCustomerFilterType={setCustomerFilterType}
-            customerSearchField={customerSearchField}
-            setCustomerSearchField={setCustomerSearchField}
+            customerFilterType={customerFilterType as any}
+            setCustomerFilterType={(val: any) => setCustomerFilterType(val)}
+            customerSearchField={customerSearchField as any}
+            setCustomerSearchField={(val: any) => setCustomerSearchField(val)}
             customerSearchQuery={customerSearchQuery}
             setCustomerSearchQuery={setCustomerSearchQuery}
           />
