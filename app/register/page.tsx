@@ -38,7 +38,7 @@ export default function AdminProtectedRegister() {
   // Fetch branches after admin verification
   const fetchBranches = async () => {
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/branches');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/branches`);
       const data = await res.json();
       setBranches(data.branches || []);
     } catch (err) {

@@ -53,7 +53,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+        const res = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to fetch user');
         const data = await res.json();
         setCurrentEmployeeId(data.employee_id);
@@ -75,7 +75,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/transactions/all`, {
+      const response = await fetch(`${API_BASE_URL}/api/transactions/all`, {
         credentials: 'include'
       });
       const data = await response.json();
@@ -159,7 +159,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
   const handlePrint = async (txn: Transaction) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/transactions/${txn.transaction_id}/full`, {
+      const response = await fetch(`${API_BASE_URL}/api/transactions/${txn.transaction_id}/full`, {
         credentials: 'include'
       });
 

@@ -77,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const publicPaths = ["/login", "/register", "/register-branch", "/register/admin-check", "/register-branch/admin-check"];
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
-  console.log("Client-side API URL:", process.env.NEXT_PUBLIC_API_URL);
   const checkAuthentication = async (): Promise<boolean> => {
     try {
       // First try to refresh token (silent fail if no refresh token)

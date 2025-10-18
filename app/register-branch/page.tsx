@@ -31,7 +31,7 @@ export default function BranchRegisterPage() {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('${process.env.NEXT_PUBLIC_API_URL}/api/admin-check', { password });
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/admin-check`, { password });
       if (res.status === 200 && res.data.success) {
         setIsVerified(true);
       } else {
@@ -64,7 +64,7 @@ export default function BranchRegisterPage() {
     e.preventDefault();
 
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/branches/register', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/branches/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

@@ -128,7 +128,7 @@ export default function FixedDepositPage() {
         queryParams.append(paramKey, fdSearchQuery);
       }
 
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/search?${queryParams.toString()}`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/search?${queryParams.toString()}`, {
         method: 'GET',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -190,7 +190,7 @@ export default function FixedDepositPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/check-account/${createForm.accountNumber}`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/check-account/${createForm.accountNumber}`, {
         method: 'GET',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -217,7 +217,7 @@ export default function FixedDepositPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/create`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -264,7 +264,7 @@ export default function FixedDepositPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/renew/${fdId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/renew/${fdId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -298,7 +298,7 @@ export default function FixedDepositPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/close/${fdId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/close/${fdId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -393,7 +393,7 @@ export default function FixedDepositPage() {
 
   const fetchInterestHistory = async (fdId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/fixed-deposit/${fdId}/interest-history`, {
+      const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/${fdId}/interest-history`, {
         method: 'GET',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -417,7 +417,7 @@ export default function FixedDepositPage() {
     if (!fdHistory[fdId]) {
       setLoadingHistory(prev => ({ ...prev, [fdId]: true }));
       try {
-        const response = await fetch(`${API_BASE_URL}/fixed-deposit/${fdId}/interest-history`, {
+        const response = await fetch(`${API_BASE_URL}/api/fixed-deposit/${fdId}/interest-history`, {
           method: 'GET',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
