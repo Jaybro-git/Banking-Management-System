@@ -50,7 +50,7 @@ export default function AdminProtectedRegister() {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5000/api/admin-check', { password });
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/admin-check`, { password });
       if (res.status === 200 && res.data.success) {
         setIsVerified(true);
         fetchBranches();
@@ -75,7 +75,7 @@ export default function AdminProtectedRegister() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5000/api/employees/register', form);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/employees/register`, form);
       alert(`Employee registered! ID: ${res.data.employee.employee_id}`);
       setForm({
         firstName: '',
