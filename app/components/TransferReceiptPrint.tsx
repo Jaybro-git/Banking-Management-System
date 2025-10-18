@@ -12,10 +12,7 @@ interface TransferReceiptPrintProps {
 const TransferReceiptPrint: React.FC<TransferReceiptPrintProps> = ({ transaction, fromAccountInfo, toAccountInfo, transferAmount, remarks }) => {
   const formatDate = (date: string | null) => {
     if (!date) return 'N/A';
-    const d = new Date(date);
-
-    const sriLankaTime = new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000);
-
+    const sriLankaTime = new Date(date);
     return sriLankaTime.toLocaleString('en-LK', {
       year: 'numeric',
       month: 'short',

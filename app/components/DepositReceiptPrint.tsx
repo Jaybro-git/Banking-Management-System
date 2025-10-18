@@ -11,10 +11,7 @@ interface DepositReceiptPrintProps {
 const DepositReceiptPrint: React.FC<DepositReceiptPrintProps> = ({ transaction, accountInfo, depositAmount, remarks }) => {
   const formatDate = (date: string | null) => {
     if (!date) return 'N/A';
-    const d = new Date(date);
-
-    const sriLankaTime = new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000);
-
+    const sriLankaTime = new Date(date);
     return sriLankaTime.toLocaleString('en-LK', {
       year: 'numeric',
       month: 'short',

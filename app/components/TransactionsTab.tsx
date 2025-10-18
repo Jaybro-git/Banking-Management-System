@@ -106,8 +106,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    date.setHours(date.getHours() + 5);
-    date.setMinutes(date.getMinutes() + 30);
 
     return date.toLocaleString('en-LK', {
       year: 'numeric',

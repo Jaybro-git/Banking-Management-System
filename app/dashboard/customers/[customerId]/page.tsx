@@ -161,8 +161,6 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     const d = new Date(dateString);
-    d.setHours(d.getHours() + 5);
-    d.setMinutes(d.getMinutes() + 30);
     return d.toLocaleString('en-LK', {
       year: 'numeric',
       month: 'short',
