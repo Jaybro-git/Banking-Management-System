@@ -1,11 +1,11 @@
 # Build stage
 FROM node:20 AS builder
+ARG NEXT_PUBLIC_API_URL
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
-
 # Production stage
 FROM node:20-slim
 WORKDIR /app
