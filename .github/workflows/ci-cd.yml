@@ -27,3 +27,28 @@ jobs:
 
       - name: Build Frontend Image
         run: docker build -t btrust-frontend .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Backend Image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/btrust-backend:latest ./backend
+          docker push ${{ secrets.DOCKER_USERNAME }}/btrust-backend:latest
+
+      - name: Build and Push Frontend Image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/btrust-frontend:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/btrust-frontend:latest
