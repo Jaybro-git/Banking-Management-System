@@ -100,7 +100,7 @@ router.get('/by-employee/:employee_id', async (req, res) => {
   }
 });
 
-// Get branch details (agents, customers, accounts)
+// Get branch details (agents, customers, accounts, employees)
 router.get('/:branchId/details', async (req, res) => {
   const { branchId } = req.params;
 
@@ -134,7 +134,23 @@ router.get('/:branchId/details', async (req, res) => {
     );
     const accounts = parseInt(accountsResult.rows[0].count, 10);
 
-    res.json({ agents, customers, accounts });
+    // Fetch employees in this branch
+    const employeesResult = await pool.query(
+      `SELECT employee_id, first_name, last_name, role, hire_date
+       FROM employee 
+       WHERE branch_id = $1 AND status = 'ACTIVE'
+       ORDER BY first_name, last_name`,
+      [branchId]
+    );
+    const employees = employeesResult.rows.map(row => ({
+      employee_id: row.employee_id,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      role: row.role,
+      hire_date: row.hire_date
+    }));
+
+    res.json({ agents, customers, accounts, employees });
   } catch (err) {
     console.error('Error fetching branch details:', err);
     res.status(500).json({ error: 'Database error', details: err.message });

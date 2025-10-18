@@ -694,7 +694,7 @@ async function payAllFDInterests() {
           [
             fd.account_id,
             monthlyInterest,
-            `Automatic Monthly FD Interest - ${fd.fd_id}`,
+            `Monthly fixed deposit interest payment`,
             'FD_INTEREST',
             null, // employee_id set to null for automatic interest
             balanceBefore

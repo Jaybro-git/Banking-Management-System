@@ -514,7 +514,7 @@ router.post('/transfer', authenticateToken, async (req, res) => {
 
 // Get all transactions with customer and employee info
 router.get('/all', authenticateToken, async (req, res) => {
-  const { limit = 100, offset = 0 } = req.query;
+  const { limit = 500, offset = 0 } = req.query;
 
   try {
     const result = await pool.query(

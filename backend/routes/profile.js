@@ -174,7 +174,7 @@ router.get('/employee/:employeeId', authenticateToken, async (req, res) => {
         e.phone_number, e.email, e.hire_date, e.status, e.salary, e.role,
         b.branch_name, b.address as branch_address,
         (SELECT COUNT(*) FROM public.customer WHERE agent_id = e.employee_id) as total_customers,
-        (SELECT COUNT(*) FROM public.account_holder ah
+        (SELECT COUNT(DISTINCT ah.account_id) FROM public.account_holder ah
          JOIN public.customer c ON ah.customer_id = c.customer_id
          WHERE c.agent_id = e.employee_id) as total_accounts,
         (SELECT COUNT(*) FROM public.transaction WHERE employee_id = e.employee_id) as total_transactions
@@ -226,7 +226,7 @@ router.get('/employee/:employeeId/report', authenticateToken, async (req, res) =
 
     // Get range accounts
     const accountsResult = await pool.query(`
-      SELECT COUNT(*) as count 
+      SELECT COUNT(DISTINCT ah.account_id) AS count
       FROM public.account_holder ah
       JOIN public.customer c ON ah.customer_id = c.customer_id
       WHERE c.agent_id = $1 AND ah.created_at BETWEEN $2::timestamp::time AND $3::timestamp::time

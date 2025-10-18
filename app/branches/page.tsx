@@ -1,4 +1,3 @@
-// app/branches/page.tsx
 'use client';
 
 import React from 'react';
@@ -17,10 +16,19 @@ interface BranchData {
   status: string;
 }
 
+interface EmployeeData {
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  hire_date: string;
+}
+
 interface BranchDetails {
   agents: number;
   customers: number;
   accounts: number;
+  employees: EmployeeData[];
 }
 
 const BranchesPage = () => {
@@ -229,7 +237,7 @@ const BranchesPage = () => {
                         {isExpanded && details && (
                           <div className="mt-4 border-t pt-4">
                             <h4 className="text-sm font-medium text-gray-900 mb-2">Branch Statistics</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-600">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-600 mb-4">
                               <p>
                                 <span className="font-medium">Total Agents:</span> {details.agents}
                               </p>
@@ -240,6 +248,34 @@ const BranchesPage = () => {
                                 <span className="font-medium">Total Accounts:</span> {details.accounts}
                               </p>
                             </div>
+                            <h4 className="text-sm font-medium text-gray-900 mb-2">Agents</h4>
+                            {details.employees.length === 0 ? (
+                              <p className="text-xs text-gray-600">No active employees found</p>
+                            ) : (
+                              <div className="rounded-lg divide-y divide-gray-100">
+                                {details.employees.map((employee) => (
+                                  <div
+                                    key={employee.employee_id}
+                                    className="py-2 px-4 bg-gray-50 hover:bg-gray-100 transition"
+                                  >
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs text-gray-600">
+                                      <p>
+                                        <span className="font-medium">Name:</span> {employee.first_name} {employee.last_name}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Role:</span> {employee.role}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Employee ID:</span> {employee.employee_id}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Hire Date:</span> {formatDate(employee.hire_date)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

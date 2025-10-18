@@ -1,7 +1,7 @@
-// page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
+import Cookies from "js-cookie"; // Import js-cookie
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -43,7 +43,13 @@ ChartJS.register(
 );
 
 export default function AgentDashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">("overview");
+  // Initialize activeTab from cookie or default to "overview"
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "customers">(() => {
+    const savedTab = Cookies.get("activeTab");
+    return savedTab && ["overview", "transactions", "customers"].includes(savedTab)
+      ? savedTab as "overview" | "transactions" | "customers"
+      : "overview";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [filterType, setFilterType] = useState<string>("All");
@@ -55,6 +61,11 @@ export default function AgentDashboard() {
   const [customerFilterType, setCustomerFilterType] = useState<string>("All");
   const [customerSearchField, setCustomerSearchField] = useState<string>("account");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+
+  // Save activeTab to cookie whenever it changes
+  useEffect(() => {
+    Cookies.set("activeTab", activeTab, { expires: 7 }); // Cookie expires in 7 days
+  }, [activeTab]);
 
   useEffect(() => {
     const fetchCurrentEmployeeAndBranch = async () => {
@@ -83,7 +94,7 @@ export default function AgentDashboard() {
 
           if (branchResponse.ok) {
             const branchData = await branchResponse.json();
-            setBranch(branchData);
+            setBranch(branchData.branch);
           }
         }
       } catch (err) {

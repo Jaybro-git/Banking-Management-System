@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 
+// Type definitions remain the same
 type CustomerFilterType =
   | 'All'
   | 'Adult Accounts'
@@ -12,20 +13,11 @@ type CustomerFilterType =
 
 type CustomerSearchField = 'account' | 'customer' | 'nic';
 
-interface CustomersTabProps {
-  customerFilterType: CustomerFilterType;
-  setCustomerFilterType: (type: CustomerFilterType) => void;
-  customerSearchField: CustomerSearchField;
-  setCustomerSearchField: (field: CustomerSearchField) => void;
-  customerSearchQuery: string;
-  setCustomerSearchQuery: (query: string) => void;
-}
-
 interface FDInfo {
   fd_id: string;
   amount: number;
   fd_type: string;
-  status: string; // Added status
+  status: string;
 }
 
 interface AccountData {
@@ -54,28 +46,25 @@ interface CustomerData {
   accounts: AccountData[];
 }
 
-export const CustomersTab: React.FC<CustomersTabProps> = ({
-  customerFilterType,
-  setCustomerFilterType,
-  customerSearchField,
-  setCustomerSearchField,
-  customerSearchQuery,
-  setCustomerSearchQuery,
-}) => {
+interface CustomersTabProps {
+  customerFilterType: CustomerFilterType;
+  setCustomerFilterType: (type: CustomerFilterType) => void;
+  customerSearchField: CustomerSearchField;
+  setCustomerSearchField: (field: CustomerSearchField) => void;
+  customerSearchQuery: string;
+  setCustomerSearchQuery: (query: string) => void;
+}
+
+// CustomerList component, updated to pass total back to parent
+const CustomerList: React.FC<{
+  customerFilterType: CustomerFilterType;
+  customerSearchField: CustomerSearchField;
+  customerSearchQuery: string;
+  setTotal: (total: number) => void; // Added to update total in parent
+}> = ({ customerFilterType, customerSearchField, customerSearchQuery, setTotal }) => {
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
-
-  const filterTypes: CustomerFilterType[] = [
-    'All',
-    'Adult Accounts',
-    'Joint Accounts',
-    'Children Accounts',
-    'Teen Accounts',
-    'Senior Accounts',
-    'Processed by Me',
-  ];
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -155,7 +144,7 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
       );
 
       setCustomers(processedCustomers);
-      setTotal(data.total || 0);
+      setTotal(data.total || 0); // Update total in parent
     } catch (err) {
       console.error('Error fetching customers:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch customers');
@@ -185,7 +174,6 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    // Add 5 hours 30 minutes for Sri Lanka time
     date.setHours(date.getHours() + 5);
     date.setMinutes(date.getMinutes() + 30);
     return date.toLocaleString('en-LK', {
@@ -209,7 +197,7 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex justify-center items-center h-[calc(100vh-250px)]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
       </div>
     );
@@ -224,10 +212,167 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
   }
 
   return (
+    <div className="flex-1 overflow-y-auto mt-4 pr-2">
+      {customers.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          No customers found matching your criteria
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {customers.map((customer) => (
+            <div
+              key={customer.customer_id}
+              className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
+            >
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      {customer.first_name} {customer.last_name}
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 text-xs rounded-full ${
+                        customer.customer_status === 'ACTIVE'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {customer.customer_status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                    <p>
+                      <span className="font-medium">NIC:</span> {customer.nic_number}
+                    </p>
+                    <p>
+                      <span className="font-medium">Phone:</span> {customer.phone_number}
+                    </p>
+                    <p>
+                      <span className="font-medium">Total Accounts:</span>{' '}
+                      {customer.total_accounts}
+                    </p>
+                    <p>
+                      <span className="font-medium">Total Balance:</span>{' '}
+                      <span className="font-semibold text-emerald-600">
+                        {formatCurrency(customer.total_balance)}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="mt-3 text-xs text-gray-700">
+                    <p className="font-medium mb-1">Accounts:</p>
+                    <div className="rounded-lg divide-y divide-gray-100 space-y-1">
+                      {customer.accounts.map((acc) => (
+                        <div
+                          key={acc.account_id}
+                          className="rounded-lg p-2 bg-gray-50 hover:bg-gray-100 transition"
+                        >
+                          <div className="flex flex-wrap justify-between items-center">
+                            <p>
+                              <span className="font-medium">Account:</span> {acc.account_id}
+                            </p>
+                            <span
+                              className={`px-2 py-0.5 text-[10px] rounded-full ${
+                                acc.account_status === 'ACTIVE'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {acc.account_status}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-600">
+                            <p>
+                              <span className="font-medium">Type:</span> {acc.account_type_name}
+                            </p>
+                            <p>
+                              <span className="font-medium">Current Balance:</span>{' '}
+                              {formatCurrency(acc.current_balance)}
+                            </p>
+                            <p>
+                              <span className="font-medium">Branch:</span> {acc.branch_name}
+                            </p>
+                            {acc.fd && (
+                              <>
+                                <p>
+                                  <span className="font-medium">Fixed Deposit:</span>{' '}
+                                  {acc.fd.fd_id}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Fixed Amount:</span>{' '}
+                                  {formatCurrency(acc.fd.amount)}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Term:</span>{' '}
+                                  {getTermDisplay(acc.fd.fd_type)}
+                                </p>
+                              </>
+                            )}
+                            {acc.last_transaction_type && (
+                              <>
+                                <p>
+                                  <span className="font-medium">Last Transaction:</span>{' '}
+                                  {acc.last_transaction_type}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Amount:</span>{' '}
+                                  {formatCurrency(acc.last_transaction_amount || 0)}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Date:</span>{' '}
+                                  {formatDate(acc.last_transaction_date)}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="primary"
+                  className="mt-2 sm:mt-0 whitespace-nowrap"
+                  onClick={() => handleViewProfile(customer.customer_id)}
+                >
+                  View Profile
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Updated CustomersTab component
+export const CustomersTab: React.FC<CustomersTabProps> = ({
+  customerFilterType,
+  setCustomerFilterType,
+  customerSearchField,
+  setCustomerSearchField,
+  customerSearchQuery,
+  setCustomerSearchQuery,
+}) => {
+  const [total, setTotal] = useState(0); // Added to manage total state
+  const filterTypes: CustomerFilterType[] = [
+    'All',
+    'Adult Accounts',
+    'Joint Accounts',
+    'Children Accounts',
+    'Teen Accounts',
+    'Senior Accounts',
+    'Processed by Me',
+  ];
+
+  return (
     <div className="flex flex-col h-[calc(100vh-135px)]">
       {/* Sticky Header Section */}
-      <div className="bg-white sticky top-0 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white sticky top-0 space-y-4 z-10">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-gray-600">Customer Lookup</h2>
           <span className="text-xs text-gray-400">
             {total} {total === 1 ? 'customer' : 'customers'} found
@@ -269,141 +414,13 @@ export const CustomersTab: React.FC<CustomersTabProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Customers List */}
-      <div className="flex-1 overflow-y-auto mt-4 pr-2">
-        {customers.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 text-sm">
-            No customers found matching your criteria
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {customers.map((customer) => (
-              <div
-                key={customer.customer_id}
-                className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
-              >
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        {customer.first_name} {customer.last_name}
-                      </h3>
-                      <span
-                        className={`px-2 py-0.5 text-xs rounded-full ${
-                          customer.customer_status === 'ACTIVE'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {customer.customer_status}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
-                      <p>
-                        <span className="font-medium">NIC:</span> {customer.nic_number}
-                      </p>
-                      <p>
-                        <span className="font-medium">Phone:</span> {customer.phone_number}
-                      </p>
-                      <p>
-                        <span className="font-medium">Total Accounts:</span>{' '}
-                        {customer.total_accounts}
-                      </p>
-                      <p>
-                        <span className="font-medium">Total Balance:</span>{' '}
-                        <span className="font-semibold text-emerald-600">
-                          {formatCurrency(customer.total_balance)}
-                        </span>
-                      </p>
-                    </div>
-
-                    {/* Accounts List */}
-                    <div className="mt-3 text-xs text-gray-700">
-                      <p className="font-medium mb-1">Accounts:</p>
-                      <div className="rounded-lg divide-y divide-gray-100 space-y-1">
-                        {customer.accounts.map((acc) => (
-                          <div
-                            key={acc.account_id}
-                            className="rounded-lg p-2 bg-gray-50 hover:bg-gray-100 transition"
-                          >
-                            <div className="flex flex-wrap justify-between items-center">
-                              <p>
-                                <span className="font-medium">Account:</span> {acc.account_id}
-                              </p>
-                              <span
-                                className={`px-2 py-0.5 text-[10px] rounded-full ${
-                                  acc.account_status === 'ACTIVE'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}
-                              >
-                                {acc.account_status}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-600">
-                              <p>
-                                <span className="font-medium">Type:</span> {acc.account_type_name}
-                              </p>
-                              <p>
-                                <span className="font-medium">Current Balance:</span>{' '}
-                                {formatCurrency(acc.current_balance)}
-                              </p>
-                              <p>
-                                <span className="font-medium">Branch:</span> {acc.branch_name}
-                              </p>
-                              {acc.fd && (
-                                <>
-                                  <p>
-                                    <span className="font-medium">Fixed Deposit:</span>{' '}
-                                    {acc.fd.fd_id}
-                                  </p>
-                                  <p>
-                                    <span className="font-medium">Fixed Amount:</span>{' '}
-                                    {formatCurrency(acc.fd.amount)}
-                                  </p>
-                                  <p>
-                                    <span className="font-medium">Term:</span>{' '}
-                                    {getTermDisplay(acc.fd.fd_type)}
-                                  </p>
-                                </>
-                              )}
-                              {acc.last_transaction_type && (
-                                <>
-                                  <p>
-                                    <span className="font-medium">Last Transaction:</span>{' '}
-                                    {acc.last_transaction_type}
-                                  </p>
-                                  <p>
-                                    <span className="font-medium">Amount:</span>{' '}
-                                    {formatCurrency(acc.last_transaction_amount || 0)}
-                                  </p>
-                                  <p>
-                                    <span className="font-medium">Date:</span>{' '}
-                                    {formatDate(acc.last_transaction_date)}
-                                  </p>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    className="mt-2 sm:mt-0 whitespace-nowrap"
-                    onClick={() => handleViewProfile(customer.customer_id)}
-                  >
-                    View Profile
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Customer List */}
+      <CustomerList
+        customerFilterType={customerFilterType}
+        customerSearchField={customerSearchField}
+        customerSearchQuery={customerSearchQuery}
+        setTotal={setTotal} // Pass setTotal to update total
+      />
     </div>
   );
 };
