@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get("accessToken")?.value || null;
   const { pathname } = req.nextUrl;
+  console.log("Server-side API URL:", process.env.NEXT_PUBLIC_API_URL);
 
   // Public routes that don't require authentication
   const publicPaths = ["/login", "/register", "/register-branch"];
