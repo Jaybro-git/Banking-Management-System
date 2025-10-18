@@ -5,13 +5,10 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build && next export",
-    "start": "next start",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron electron-main.js\"",
-    "electron:build": "npm run build && electron-builder"
+    "start": "next start"
   },
   "dependencies": {
     "chart.js": "^4.5.0",
-    "electron-is-dev": "^3.0.1",
     "js-cookie": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.539.0",
@@ -33,8 +30,6 @@
     "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.0",
-    "electron": "^37.3.0",
-    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "postcss": "^8.5.6",
@@ -49,7 +44,6 @@
       "out/**/*",
       "node_modules/**/*",
       "package.json",
-      "electron-main.js",
       "preload.js"
     ],
     "directories": {

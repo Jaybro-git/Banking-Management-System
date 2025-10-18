@@ -15,7 +15,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Configure axios defaults
 axios.defaults.withCredentials = true;
-axios.defaults.baseURL = "http://localhost:5000";
+axios.defaults.baseURL = process.env.NEXT_PUBLIC_API_URL;
 
 let isRefreshing = false;
 let failedQueue: any[] = [];

@@ -70,7 +70,7 @@ export default function AgentDashboard() {
   useEffect(() => {
     const fetchCurrentEmployeeAndBranch = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         const response = await fetch(`${apiUrl}/api/profile/employee`, {
           method: 'GET',
           credentials: 'include',

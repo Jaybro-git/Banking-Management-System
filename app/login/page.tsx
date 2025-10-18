@@ -8,7 +8,7 @@ import axios from "axios";
 
 // Create separate axios instance for login to avoid interceptor issues
 const authAxios = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
   withCredentials: true,
 });
 

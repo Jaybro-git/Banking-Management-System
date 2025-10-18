@@ -89,7 +89,7 @@ export default function FixedDepositPage() {
   const [printFD, setPrintFD] = useState<FDDetails | null>(null);
   const [printHistory, setPrintHistory] = useState<any[]>([]);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
   const filterTypes: FDFilterType[] = [
     'All',

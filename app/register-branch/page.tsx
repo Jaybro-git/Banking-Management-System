@@ -31,7 +31,7 @@ export default function BranchRegisterPage() {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5000/api/admin-check', { password });
+      const res = await axios.post('https://btrust-backend-production.up.railway.app/api/admin-check', { password });
       if (res.status === 200 && res.data.success) {
         setIsVerified(true);
       } else {
@@ -64,7 +64,7 @@ export default function BranchRegisterPage() {
     e.preventDefault();
 
     try {
-      const res = await fetch('http://localhost:5000/api/branches/register', {
+      const res = await fetch('https://btrust-backend-production.up.railway.app/api/branches/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

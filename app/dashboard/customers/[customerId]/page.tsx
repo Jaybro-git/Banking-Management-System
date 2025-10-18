@@ -71,7 +71,7 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
       setLoading(true);
       setError(null);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         const response = await fetch(`${apiUrl}/api/profile/customer/${params.customerId}`, {
           method: 'GET',
           credentials: 'include',
@@ -192,7 +192,7 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
       return;
     }
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl =  process.env.NEXT_PUBLIC_API_URL;
       let allTxns: Transaction[] = [];
 
       if (selectedAccount === 'all') {
@@ -310,7 +310,7 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
             <Button
               variant={customer.customer_status === 'ACTIVE' ? 'danger' : 'primary'}
               onClick={async () => {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL;
                 try {
                   const response = await fetch(`${apiUrl}/api/profile/customer/${customer.customer_id}/status-toggle`, {
                     method: 'PUT',
@@ -394,7 +394,7 @@ const CustomerProfilePage = ({ params: paramsPromise }: { params: Promise<{ cust
                     variant={acc.account_status === 'ACTIVE' ? 'danger' : 'primary'}
                     size="sm"
                     onClick={async () => {
-                      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+                      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
                       try {
                         const res = await fetch(`${apiUrl}/api/profile/account/${acc.account_id}/status-toggle`, {
                           method: 'PUT',

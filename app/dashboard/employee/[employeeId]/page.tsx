@@ -57,7 +57,7 @@ const EmployeeProfilePage = ({ params: paramsPromise }: { params: Promise<{ empl
       setLoading(true);
       setError(null);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         const response = await fetch(`${apiUrl}/api/profile/employee/${params.employeeId}`, {
           method: 'GET',
           credentials: 'include',
@@ -98,7 +98,7 @@ const EmployeeProfilePage = ({ params: paramsPromise }: { params: Promise<{ empl
     }
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       const response = await fetch(
         `${apiUrl}/api/profile/employee/${params.employeeId}/report?startDate=${reportStartDate}&endDate=${reportEndDate}`,
         {

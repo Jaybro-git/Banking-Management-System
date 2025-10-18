@@ -38,7 +38,7 @@ export default function AdminProtectedRegister() {
   // Fetch branches after admin verification
   const fetchBranches = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/branches');
+      const res = await fetch('https://btrust-backend-production.up.railway.app/api/branches');
       const data = await res.json();
       setBranches(data.branches || []);
     } catch (err) {

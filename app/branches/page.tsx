@@ -56,7 +56,7 @@ const BranchesPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       const response = await fetch(`${apiUrl}/api/branches/`, {
         method: 'GET',
         credentials: 'include',
@@ -81,7 +81,7 @@ const BranchesPage = () => {
 
   const fetchBranchDetails = async (branchId: string) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       const response = await fetch(`${apiUrl}/api/branches/${branchId}/details`, {
         method: 'GET',
         credentials: 'include',

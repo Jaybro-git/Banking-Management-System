@@ -53,7 +53,7 @@ export default function ViewReportsPage() {
   useEffect(() => {
     const fetchBranches = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         const res = await fetch(`${apiUrl}/api/branches`, {
           credentials: 'include',
         });
@@ -80,7 +80,7 @@ export default function ViewReportsPage() {
 
   const generateReport = async (e: React.FormEvent) => {
     e.preventDefault();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     try {
       const res = await fetch(`${apiUrl}/api/reports/generate`, {
         method: 'POST',

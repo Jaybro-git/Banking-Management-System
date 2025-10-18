@@ -5,9 +5,9 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - ./backend/.env         # use the backend's env file
+      - ./backend/.env
     volumes:
-      - ./backend:/app         # live code editing
+      - ./backend:/app
       - /app/node_modules
     command: npm run dev
 
@@ -17,12 +17,12 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - ./.env                 # frontend env file (optional)
+      - ./.env
     volumes:
       - .:/app
       - /app/node_modules
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_API_URL=https://btrust-backend-production.up.railway.app  # Your backend URL
     command: npm run dev
     depends_on:
       - backend
