@@ -1,23 +1,18 @@
-# Use Node.js 20 to avoid dependency warnings
-FROM node:20
-
-# Set working directory
+# Build stage
+FROM node:20 AS builder
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
-
-# Copy all source code
 COPY . .
-
-# Build Next.js app
 RUN npm run build
 
-# Expose port
+# Production stage
+FROM node:20-slim
+WORKDIR /app
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
 EXPOSE 3000
-
-# Start in production mode
+ENV NODE_ENV=production
 CMD ["npm", "run", "start"]
