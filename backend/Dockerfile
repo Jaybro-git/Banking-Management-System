@@ -1,20 +1,18 @@
-# Use official Node.js image
-FROM node:18
-
-# Set working directory inside container
+# Build stage
+FROM node:18 AS builder
 WORKDIR /app
-
-# Copy backend package.json and lock file first
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
-
-# Copy backend source code
 COPY . .
 
-# Expose backend port
+# Production stage
+FROM node:18-slim
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/server.js ./server.js
+# Add other necessary files (e.g., if you have routes/ or utils/)
+COPY --from=builder /app ./
 EXPOSE 5000
-
-# Default command to run your dev script
-CMD ["npm", "run", "dev"]
+ENV NODE_ENV=production
+CMD ["node", "server.js"]
