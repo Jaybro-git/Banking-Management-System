@@ -15,7 +15,8 @@ export async function middleware(req: NextRequest) {
   let isValidToken = false;
   if (token) {
     try {
-      const response = await fetch(`${req.nextUrl.origin.replace(':3000', ':5000')}/api/auth/verify`, {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://btrust-backend-production.up.railway.app';
+      const response = await fetch(`${backendUrl}/api/auth/verify`, {
         method: "GET",
         headers: {
           "Cookie": `accessToken=${token}`,
