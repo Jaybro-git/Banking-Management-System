@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    container_name: btrust-backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env         # use the backend's env file
+    volumes:
+      - ./backend:/app         # live code editing
+      - /app/node_modules
+    command: npm run dev
+
+  frontend:
+    build: .
+    container_name: btrust-frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./.env                 # frontend env file (optional)
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    command: npm run dev
+    depends_on:
+      - backend
