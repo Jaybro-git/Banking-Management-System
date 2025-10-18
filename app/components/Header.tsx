@@ -44,13 +44,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab }) => {
   useEffect(() => {
     const fetchBranch = async () => {
       try {
-        const userRes = await axios.get('http://localhost:5000/api/auth/me', {
+        const userRes = await axios.get('${process.env.NEXT_PUBLIC_API_URL}/api/auth/me', {
           withCredentials: true,
         });
         const employeeId = userRes.data.employee_id;
 
         const branchRes = await axios.get(
-          `http://localhost:5000/api/branches/by-employee/${employeeId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/api/branches/by-employee/${employeeId}`,
           { withCredentials: true }
         );
         setBranch(branchRes.data.branch);

@@ -21,7 +21,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ quickActions, branch }
 
   useEffect(() => {
     const fetchData = async () => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
       // Fetch trends based on chart view
       try {

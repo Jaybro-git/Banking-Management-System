@@ -48,7 +48,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
     const fetchUser = async () => {
