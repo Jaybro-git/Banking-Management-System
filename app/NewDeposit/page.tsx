@@ -108,7 +108,7 @@ export default function NewDepositsPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/account/${form.accountNumber}/info`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/account/${form.accountNumber}/info`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -146,7 +146,7 @@ export default function NewDepositsPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/deposit`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/deposit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

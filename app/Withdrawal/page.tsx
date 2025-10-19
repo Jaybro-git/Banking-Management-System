@@ -124,7 +124,7 @@ export default function WithdrawalPage() {
       isValid: false
     });
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/account/${form.accountNumber}/info`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/account/${form.accountNumber}/info`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -159,7 +159,7 @@ export default function WithdrawalPage() {
     setError('');
     try {
       const description = `Purpose: ${form.purpose} - Remarks: ${form.remarks || 'N/A'}`;
-      const res = await fetch(`${API_BASE_URL}/transactions/withdrawal`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/withdrawal`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

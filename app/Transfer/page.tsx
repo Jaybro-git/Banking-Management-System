@@ -131,7 +131,7 @@ export default function TransferPage() {
       isValid: false
     });
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/account/${form.fromAccountNumber}/info`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/account/${form.fromAccountNumber}/info`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -174,7 +174,7 @@ export default function TransferPage() {
       isValid: false
     });
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/account/${form.toAccountNumber}/info`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/account/${form.toAccountNumber}/info`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -204,7 +204,7 @@ export default function TransferPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/transfer`, {
+      const res = await fetch(`${API_BASE_URL}/api/transactions/transfer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
