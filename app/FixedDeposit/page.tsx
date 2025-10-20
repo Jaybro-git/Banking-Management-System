@@ -342,18 +342,20 @@ export default function FixedDepositPage() {
 
   const calculateMaturityAmount = () => {
     if (!createForm.amount || !createForm.term) return 0;
+
     const principal = parseFloat(createForm.amount);
-    const term = parseFloat(createForm.term);
+    const term = parseFloat(createForm.term); 
     let rate = 0;
-    
+
+    // Assign annual interest rate based on term
     if (term === 0.5) rate = 0.13;
     else if (term === 1) rate = 0.14;
     else if (term === 3) rate = 0.15;
-    
-    const months = term * 12;
-    const monthlyRate = rate / 12;
-    const maturityAmount = principal * Math.pow(1 + monthlyRate, months);
-    
+
+    // Simple Interest calculation
+    const totalInterest = principal * rate * term;
+    const maturityAmount = principal + totalInterest;
+
     return maturityAmount;
   };
 
