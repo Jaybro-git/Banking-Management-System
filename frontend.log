@@ -1,0 +1,40 @@
+nohup: ignoring input
+
+> btrust@0.1.0 dev
+> next dev --turbopack
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /home/sudil-minthaka/Documents/DB/package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * /home/sudil-minthaka/Documents/DB/Banking-Management-System/package-lock.json
+
+   ▲ Next.js 15.5.5 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://10.12.106.253:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 823ms
+ ○ Compiling / ...
+ ✓ Compiled / in 3.1s
+ GET / 200 in 3477ms
+ GET /favicon.ico?favicon.938cb171.ico 200 in 528ms
+ ○ Compiling /favicon.ico ...
+ ✓ Compiled /favicon.ico in 546ms
+ GET /login 200 in 589ms
+ ✓ Compiled /register in 262ms
+ GET /register 200 in 371ms
+ GET /login 200 in 82ms
+ GET / 200 in 55ms
+ ✓ Compiled /OpenAccount in 305ms
+ GET /OpenAccount 200 in 356ms
+ ✓ Compiled /Reports in 328ms
+ GET /Reports 200 in 385ms
+ GET / 200 in 74ms
+ ✓ Compiled /branches in 283ms
+ GET /branches 200 in 341ms
+ ✓ Compiled /dashboard/employee/[employeeId] in 286ms
+ GET /dashboard/employee/00107 200 in 825ms
+ GET / 200 in 52ms
