@@ -683,9 +683,9 @@ async function payAllFDInterests() {
         ? new Date(lastPaymentResult.rows[0].time_date_stamp) 
         : new Date(fd.start_date);
       
-      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24)); //
+      const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24));
       
-      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >= 1
+      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) {
         // Use record_deposit function with FD_INTEREST type and null employee_id
         const balanceBefore = parseFloat(fd.current_balance);
         
@@ -715,7 +715,7 @@ async function payAllFDInterests() {
   }
 }
 
-// Function to automatically mark FDs as matured
+// Function to automatically close matured FDs
 async function autoMatureFDs() {
   const client = await pool.connect();
   try {
@@ -724,17 +724,26 @@ async function autoMatureFDs() {
     // Get all active FDs that have reached or passed their maturity date
     const today = new Date().toISOString().split('T')[0];
     const fdResult = await client.query(
-      `UPDATE fixed_deposit
-       SET status = 'MATURED'
-       WHERE status = 'ACTIVE' AND maturity_date <= $1
-       RETURNING fd_id, account_id`,
+      `SELECT fd_id, account_id
+       FROM fixed_deposit
+       WHERE status = 'ACTIVE' AND maturity_date <= $1`,
       [today]
     );
 
     const maturedFDs = fdResult.rows;
 
+    for (const fd of maturedFDs) {
+      // Use close_fd database function with null employee_id for automatic closure
+      const result = await client.query(
+        'SELECT close_fd($1, $2) as result',
+        [fd.fd_id, null]
+      );
+
+      console.log(`Automatic closure of matured FD ${fd.fd_id}:`, result.rows[0].result);
+    }
+
     await client.query('COMMIT');
-    console.log(`Automatic FD maturity job completed successfully. Marked ${maturedFDs.length} FDs as MATURED.`);
+    console.log(`Automatic FD maturity job completed successfully. Processed ${maturedFDs.length} FDs.`);
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error in automatic FD maturity job:', err);
