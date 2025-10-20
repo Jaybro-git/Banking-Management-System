@@ -38,3 +38,13 @@ nohup: ignoring input
  ✓ Compiled /dashboard/employee/[employeeId] in 286ms
  GET /dashboard/employee/00107 200 in 825ms
  GET / 200 in 52ms
+ GET / 200 in 556ms
+ GET /favicon.ico?favicon.938cb171.ico 200 in 282ms
+ GET /dashboard/employee/00107 200 in 106ms
+ GET / 200 in 51ms
+ GET /OpenAccount 200 in 64ms
+ GET / 200 in 116ms
+ ○ Compiling /NewDeposit ...
+ ✓ Compiled /NewDeposit in 1738ms
+ GET /NewDeposit 200 in 1803ms
+ GET /NewDeposit 200 in 52ms
