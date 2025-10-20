@@ -685,7 +685,7 @@ async function payAllFDInterests() {
       
       const daysSinceLastPayment = Math.floor((new Date() - lastPaymentDate) / (1000 * 60 * 60 * 24)); //
       
-      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >=1
+      if (daysSinceLastPayment >= 30 && monthlyInterest > 0) { // >= 1
         // Use record_deposit function with FD_INTEREST type and null employee_id
         const balanceBefore = parseFloat(fd.current_balance);
         
@@ -694,7 +694,7 @@ async function payAllFDInterests() {
           [
             fd.account_id,
             monthlyInterest,
-            `Monthly fixed deposit interest payment`,
+            `Automatic Monthly FD Interest - ${fd.fd_id}`,
             'FD_INTEREST',
             null, // employee_id set to null for automatic interest
             balanceBefore
@@ -715,17 +715,54 @@ async function payAllFDInterests() {
   }
 }
 
+// Function to automatically mark FDs as matured
+async function autoMatureFDs() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Get all active FDs that have reached or passed their maturity date
+    const today = new Date().toISOString().split('T')[0];
+    const fdResult = await client.query(
+      `UPDATE fixed_deposit
+       SET status = 'MATURED'
+       WHERE status = 'ACTIVE' AND maturity_date <= $1
+       RETURNING fd_id, account_id`,
+      [today]
+    );
+
+    const maturedFDs = fdResult.rows;
+
+    await client.query('COMMIT');
+    console.log(`Automatic FD maturity job completed successfully. Marked ${maturedFDs.length} FDs as MATURED.`);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error in automatic FD maturity job:', err);
+  } finally {
+    client.release();
+  }
+}
+
 // Schedule automatic interest payment to run daily at midnight
-// This checks all FDs daily but only pays if 30 days have passed (effective monthly per FD)
 cron.schedule('0 0 * * *', () => {
   console.log('Running automatic FD interest payment job...');
   payAllFDInterests();
+});
+
+// Schedule automatic FD maturity check to run daily at 1 AM
+cron.schedule('0 1 * * *', () => {
+  console.log('Running automatic FD maturity job...');
+  autoMatureFDs();
 });
 
 // For testing: Run every minute (comment out in production)
 // cron.schedule('* * * * *', () => {
 //   console.log('Running automatic FD interest payment job (test mode)...');
 //   payAllFDInterests();
+// });
+// cron.schedule('* * * * *', () => {
+//   console.log('Running automatic FD maturity job (test mode)...');
+//   autoMatureFDs();
 // });
 
 module.exports = router;
