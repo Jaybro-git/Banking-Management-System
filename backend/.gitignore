@@ -1,0 +1,8 @@
+.env
+.env.local
+.env.production
+# Node modules
+node_modules/
+
+# Logs
+*.log
