@@ -195,6 +195,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       if (filterType === "Deposit" && !['DEPOSIT', 'INITIAL', 'TRANSFER_IN'].includes(txn.transaction_type)) {
         matchesFilter = false;
       }
+      if (filterType === "Initial Deposit" && txn.transaction_type !== 'INITIAL') {
+        matchesFilter = false;
+      }
       if (filterType === "Withdrawal" && !['WITHDRAWAL', 'TRANSFER_OUT'].includes(txn.transaction_type)) {
         matchesFilter = false;
       }
@@ -254,7 +257,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-2">
-          {['All', 'Deposit', 'Withdrawal', 'Transfer', 'FD Interest', 'Savings Interest', 'Processed by me'].map((type) => (
+          {['All', 'Deposit', 'Initial Deposit', 'Withdrawal', 'Transfer', 'FD Interest', 'Savings Interest', 'Processed by me'].map((type) => (
             <Button
               key={type}
               variant="filter"
